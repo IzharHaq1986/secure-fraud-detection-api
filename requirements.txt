@@ -1,4 +1,14 @@
-fastapi==0.110.0
+# FastAPI (includes Starlette dependency)
+fastapi>=0.115.0
+
+# ASGI server
 uvicorn==0.29.0
+
+# Data validation
 pydantic==2.6.4
+
+# Environment variable loading
 python-dotenv==1.0.1
+
+# Pin Starlette to a non-vulnerable version required by pip-audit
+starlette>=0.47.2
