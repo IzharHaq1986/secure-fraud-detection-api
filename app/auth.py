@@ -2,7 +2,7 @@ import os
 from dataclasses import dataclass
 from typing import Optional
 
-from fastapi import Header, HTTPException, status
+from fastapi import HTTPException, status
 
 
 @dataclass(frozen=True)

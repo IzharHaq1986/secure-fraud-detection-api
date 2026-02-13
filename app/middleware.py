@@ -1,6 +1,6 @@
 import time
 import uuid
-from typing import Dict, Tuple, Optional
+from typing import Dict, Tuple
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
