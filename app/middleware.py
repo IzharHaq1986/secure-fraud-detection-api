@@ -1,5 +1,6 @@
 import time
 import uuid
+# Optional was removed because it is not used in this module.
 from typing import Dict, Tuple
 
 from fastapi import Request, Response

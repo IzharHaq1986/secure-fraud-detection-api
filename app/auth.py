@@ -2,6 +2,7 @@ import os
 from dataclasses import dataclass
 from typing import Optional
 
+# Header was removed because it was not used in this module.
 from fastapi import HTTPException, status
 
 
