@@ -2,7 +2,13 @@
 set -euo pipefail
 
 # CI lock file verification.
-# Ensures requirements.lock.txt matches the environment installed in CI.
+# We compare requirements.lock.txt to the installed environment, but ignore
+# build-tooling packages that GitHub runners may inject or update:
+# - setuptools
+# - wheel
+#
+# These do not affect your application runtime behavior and are not worth
+# failing CI over.
 
 LOCK_FILE="requirements.lock.txt"
 
@@ -12,11 +18,18 @@ if [[ ! -f "${LOCK_FILE}" ]]; then
   exit 1
 fi
 
-python -m pip freeze --local > /tmp/requirements.lock
+# Generate a normalized lock from the current environment.
+python -m pip freeze --local \
+  | grep -viE '^(setuptools|wheel)=='
+  > /tmp/requirements.lock
 
-if ! diff -u "${LOCK_FILE}" /tmp/requirements.lock; then
+# Normalize the repo lock file the same way before diffing.
+grep -viE '^(setuptools|wheel)=='
+  "${LOCK_FILE}" > /tmp/requirements.lock.expected
+
+if ! diff -u /tmp/requirements.lock.expected /tmp/requirements.lock; then
   echo ""
-  echo "ERROR: ${LOCK_FILE} is out of date."
+  echo "ERROR: ${LOCK_FILE} is out of date (ignoring setuptools/wheel)."
   echo "Update it with: python -m pip freeze --local > ${LOCK_FILE}"
   exit 1
 fi
