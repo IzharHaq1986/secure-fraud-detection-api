@@ -1,13 +1,14 @@
 # .github/workflows/ci.yml
 #
 # CI Pipeline (DevSecOps)
-# - Installs dependencies from a pinned lock file for reproducibility.
-# - Verifies the lock file matches the installed environment.
-# - Runs linting (Ruff), vulnerability scanning (pip-audit), and tests (pytest).
+# - Reproducible installs using requirements.lock.txt
+# - Lock verification (with debug print so we know exactly what CI runs)
+# - Lint (Ruff), vulnerability scan (pip-audit), and tests (pytest)
 #
-# Important:
-# - We upgrade ONLY pip (not setuptools/wheel) to avoid altering the locked environment
-#   and causing lock verification diffs in CI.
+# Notes:
+# - We upgrade ONLY pip to avoid changing the locked environment.
+# - We run the lock script via bash for portability.
+# - The "Show lock-check script" step is temporary but extremely useful for diagnosing CI drift.
 
 name: CI
 
@@ -16,6 +17,9 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+
+permissions:
+  contents: read
 
 jobs:
   ci:
@@ -32,28 +36,31 @@ jobs:
         with:
           python-version: "3.12"
 
-      # Upgrade pip only (do NOT upgrade setuptools/wheel here).
-      # Upgrading setuptools/wheel changes the installed environment and breaks lock checks.
+      # Upgrade pip only (avoid modifying the environment with setuptools/wheel).
       - name: Upgrade pip
         run: |
           python -m pip install --upgrade pip
 
       # Install dependencies from the fully pinned lock file.
-      # This keeps CI deterministic and matches your local, tested environment.
       - name: Install dependencies (locked)
         run: |
           python -m pip install -r requirements.lock.txt
 
-      # Debug the workspace so we can confirm scripts/ exists in the runner checkout.
-      # This is helpful when diagnosing "No such file or directory" issues.
+      # Debug: confirm repository layout exists as expected in CI.
       - name: Debug workspace (confirm scripts path)
         run: |
           pwd
           ls -la
           ls -la scripts || true
 
+      # Debug: print the exact script CI will run (prevents "wrong script" confusion).
+      - name: Show lock-check script (CI debug)
+        run: |
+          echo "----- scripts/check_requirements_lock.sh (start) -----"
+          sed -n '1,200p' scripts/check_requirements_lock.sh
+          echo "----- scripts/check_requirements_lock.sh (end) -----"
+
       # Verify the lock file matches what is installed.
-      # Run via bash (more robust than relying on executable bit across platforms).
       - name: Verify requirements lock
         run: |
           bash scripts/check_requirements_lock.sh
