@@ -1,43 +1,62 @@
+# .github/workflows/ci.yml
+#
+# CI Pipeline (DevSecOps)
+# - Installs dependencies from a pinned lock file for reproducibility.
+# - Runs Ruff for linting.
+# - Runs pip-audit for vulnerability scanning.
+# - Verifies the lock file matches the environment.
+# - Runs pytest to prevent regressions.
+
 name: CI
 
 on:
   push:
-    branches: ["main"]
+    branches: [ "main" ]
   pull_request:
+    branches: [ "main" ]
 
 jobs:
-  lint-and-audit:
+  ci:
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout source code
+      # Checkout repository code.
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Set up Python runtime
+      # Use a consistent Python version in CI.
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      # Install dependencies
-       - name: Install dependencies (locked)
-         run: pip install -r requirements.lock.txt
+      # Upgrade pip tooling to reduce install quirks.
+      - name: Upgrade pip tooling
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
 
-          - name: Verify requirements lock
-            run: ./scripts/check_requirements_lock.sh
-         - name: Run test suite
-           run: pytest -v
-          # Static analysis tools (kept minimal and fast)
-          pip install ruff==0.6.9
-          pip install pip-audit==2.7.3
+      # Install dependencies from the lock file (fully pinned).
+      # This ensures CI uses the exact versions you tested locally.
+      - name: Install dependencies (locked)
+        run: |
+          python -m pip install -r requirements.lock.txt
 
-      # Lint with Ruff (fast, modern linter)
-      - name: Lint (ruff)
+      # Ensure the lock file truly matches what got installed in CI.
+      - name: Verify requirements lock
+        run: |
+          ./scripts/check_requirements_lock.sh
+
+      # Lint the codebase.
+      - name: Ruff lint
         run: |
           ruff check .
 
-      # Dependency vulnerability scan
+      # Scan dependencies for known vulnerabilities.
       - name: Dependency audit (pip-audit)
         run: |
-          pip-audit -r requirements.txt
+          pip-audit
+
+      # Run tests to prevent regressions.
+      - name: Run test suite
+        run: |
+          pytest -v
