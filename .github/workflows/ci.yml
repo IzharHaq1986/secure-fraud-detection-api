@@ -1,10 +1,13 @@
 # .github/workflows/ci.yml
 #
 # CI Pipeline (DevSecOps)
-# - Uses a pinned lock file for reproducible installs.
+# - Installs dependencies from a pinned lock file for reproducibility.
 # - Verifies the lock file matches the installed environment.
-# - Runs linting (Ruff), vulnerability scan (pip-audit), and tests (pytest).
-# - Includes a small workspace debug step to prove the scripts/ directory exists in CI.
+# - Runs linting (Ruff), vulnerability scanning (pip-audit), and tests (pytest).
+#
+# Important:
+# - We upgrade ONLY pip (not setuptools/wheel) to avoid altering the locked environment
+#   and causing lock verification diffs in CI.
 
 name: CI
 
@@ -29,10 +32,11 @@ jobs:
         with:
           python-version: "3.12"
 
-      # Upgrade pip tooling to reduce install quirks and ensure modern resolver behavior.
-      - name: Upgrade pip tooling
+      # Upgrade pip only (do NOT upgrade setuptools/wheel here).
+      # Upgrading setuptools/wheel changes the installed environment and breaks lock checks.
+      - name: Upgrade pip
         run: |
-          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install --upgrade pip
 
       # Install dependencies from the fully pinned lock file.
       # This keeps CI deterministic and matches your local, tested environment.
@@ -41,7 +45,7 @@ jobs:
           python -m pip install -r requirements.lock.txt
 
       # Debug the workspace so we can confirm scripts/ exists in the runner checkout.
-      # This is especially useful when diagnosing "No such file or directory" issues.
+      # This is helpful when diagnosing "No such file or directory" issues.
       - name: Debug workspace (confirm scripts path)
         run: |
           pwd
