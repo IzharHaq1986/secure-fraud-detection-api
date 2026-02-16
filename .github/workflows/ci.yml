@@ -1,11 +1,10 @@
 # .github/workflows/ci.yml
 #
 # CI Pipeline (DevSecOps)
-# - Installs dependencies from a pinned lock file for reproducibility.
-# - Runs Ruff for linting.
-# - Runs pip-audit for vulnerability scanning.
-# - Verifies the lock file matches the environment.
-# - Runs pytest to prevent regressions.
+# - Uses a pinned lock file for reproducible installs.
+# - Verifies the lock file matches the installed environment.
+# - Runs linting (Ruff), vulnerability scan (pip-audit), and tests (pytest).
+# - Includes a small workspace debug step to prove the scripts/ directory exists in CI.
 
 name: CI
 
@@ -30,21 +29,30 @@ jobs:
         with:
           python-version: "3.12"
 
-      # Upgrade pip tooling to reduce install quirks.
+      # Upgrade pip tooling to reduce install quirks and ensure modern resolver behavior.
       - name: Upgrade pip tooling
         run: |
           python -m pip install --upgrade pip setuptools wheel
 
-      # Install dependencies from the lock file (fully pinned).
-      # This ensures CI uses the exact versions you tested locally.
+      # Install dependencies from the fully pinned lock file.
+      # This keeps CI deterministic and matches your local, tested environment.
       - name: Install dependencies (locked)
         run: |
           python -m pip install -r requirements.lock.txt
 
-      # Ensure the lock file truly matches what got installed in CI.
+      # Debug the workspace so we can confirm scripts/ exists in the runner checkout.
+      # This is especially useful when diagnosing "No such file or directory" issues.
+      - name: Debug workspace (confirm scripts path)
+        run: |
+          pwd
+          ls -la
+          ls -la scripts || true
+
+      # Verify the lock file matches what is installed.
+      # Run via bash (more robust than relying on executable bit across platforms).
       - name: Verify requirements lock
         run: |
-          ./scripts/check_requirements_lock.sh
+          bash scripts/check_requirements_lock.sh
 
       # Lint the codebase.
       - name: Ruff lint
@@ -56,7 +64,7 @@ jobs:
         run: |
           pip-audit
 
-      # Run tests to prevent regressions.
+      # Run unit tests to prevent regressions.
       - name: Run test suite
         run: |
           pytest -v
