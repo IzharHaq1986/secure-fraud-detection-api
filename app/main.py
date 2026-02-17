@@ -70,7 +70,8 @@ def create_app() -> FastAPI:
         """
 
         # Request correlation (set by your existing request-id middleware).
-        request_id = getattr(request.state, "request_id", "unknown")
+        from uuid import uuid4
+        request_id = getattr(request.state, "request_id", None) or str(uuid4())
 
         # TODO: Replace this placeholder with real model inference.
         # Keep it deterministic for now so tests remain stable.
