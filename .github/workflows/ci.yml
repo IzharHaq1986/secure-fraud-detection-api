@@ -25,6 +25,10 @@ permissions:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    env:
+    # Provide API keys to tests in CI (no .env file exists in the runner).
+    API_KEY_ADMIN: ${{ secrets.API_KEY_ADMIN }}
+    API_KEY_SERVICE: ${{ secrets.API_KEY_SERVICE }}
 
     steps:
       # Checkout repository code.
