@@ -2,14 +2,16 @@
 #
 # CI Pipeline (DevSecOps)
 # - Deterministic installs via requirements.lock.txt
-# - Verifies the lock file matches what got installed (order-insensitive)
-# - Lints with Ruff
-# - Scans dependencies with pip-audit
-# - Runs pytest explicitly against the tests/ folder (prevents "collected 0 items" surprises)
+# - Lock verification via scripts/check_requirements_lock.sh
+# - Linting (Ruff)
+# - Vulnerability scanning (pip-audit)
+# - Test execution (pytest)
 #
-# Notes:
-# - We upgrade ONLY pip to avoid modifying the locked environment unnecessarily.
-# - We include lightweight debug steps to make CI failures self-explanatory.
+# Important:
+# - CI runners do NOT have your local .env file.
+# - We provide API keys to tests via GitHub Actions Secrets:
+#     - API_KEY_ADMIN
+#     - API_KEY_SERVICE
 
 name: CI
 
@@ -25,10 +27,13 @@ permissions:
 jobs:
   ci:
     runs-on: ubuntu-latest
+
+    # Job-level environment variables (available to all steps).
     env:
-    # Provide API keys to tests in CI (no .env file exists in the runner).
-    API_KEY_ADMIN: ${{ secrets.API_KEY_ADMIN }}
-    API_KEY_SERVICE: ${{ secrets.API_KEY_SERVICE }}
+      # These must be configured in GitHub:
+      # Settings → Secrets and variables → Actions → New repository secret
+      API_KEY_ADMIN: ${{ secrets.API_KEY_ADMIN }}
+      API_KEY_SERVICE: ${{ secrets.API_KEY_SERVICE }}
 
     steps:
       # Checkout repository code.
@@ -51,23 +56,23 @@ jobs:
         run: |
           python -m pip install -r requirements.lock.txt
 
-      # Debug: confirm repository layout and test files exist in the runner checkout.
-      - name: Debug workspace (repo + tests)
+      # Debug: confirm scripts/ and tests/ exist in the runner checkout.
+      - name: Debug workspace (repo + scripts + tests)
         run: |
           echo "=== Repo root ==="
           pwd
           ls -la
 
           echo ""
-          echo "=== tests/ folder ==="
-          ls -la tests || true
+          echo "=== scripts/ ==="
+          ls -la scripts || true
 
           echo ""
-          echo "=== Test files ==="
+          echo "=== tests/ ==="
+          ls -la tests || true
           find tests -maxdepth 2 -type f -print || true
 
       # Verify the lock file matches what is installed.
-      # This script should sort before diffing to avoid order-only mismatches.
       - name: Verify requirements lock
         run: |
           bash scripts/check_requirements_lock.sh
@@ -83,7 +88,6 @@ jobs:
           pip-audit
 
       # Run unit tests explicitly from the tests/ folder.
-      # This prevents pytest discovery/config edge cases from reporting "collected 0 items".
       - name: Run test suite
         run: |
           pytest -v tests
