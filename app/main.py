@@ -3,23 +3,54 @@
 Secure Fraud Detection API (FastAPI)
 
 This file defines:
-- FastAPI app initialization
-- Core middleware wiring (request id, rate limiting, security headers, etc.)
-- Strict /v1/predict endpoint contract (FraudRequest -> FraudResponse)
+- A FastAPI app factory (create_app) for clean initialization and testability
+- A strict /v1/predict endpoint contract:
+    FraudRequest -> FraudResponse
+- API-key authentication enforced as an explicit dependency (hard to bypass)
+- A safe request_id fallback when middleware is not present (CI/test friendly)
 
-Key CI issue this fixes:
-- Ensures /v1/predict uses strict Pydantic schemas and returns score/decision fields,
-  instead of the older "not_implemented" stub response.
+Why this exists:
+- CI must never allow "wrong-key" to return 200.
+- The predict endpoint must never return untyped / drifting response payloads.
 """
 
 from __future__ import annotations
 
-from fastapi import FastAPI, Request
+import os
+from uuid import uuid4
 
-# NOTE:
-# Keep these imports aligned with your existing modules.
-# If any import path differs in your repo, adjust it to match your structure.
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
+
 from app.schemas import FraudDecision, FraudRequest, FraudResponse
+
+
+def require_api_key(x_api_key: str | None = Header(default=None)) -> str:
+    """
+    Enforce API-key authentication for protected endpoints.
+
+    Notes:
+    - Reads from 'x-api-key' header.
+    - Valid keys are provided via environment variables:
+        API_KEY_ADMIN
+        API_KEY_SERVICE
+      In CI, these should be set using GitHub Actions Secrets.
+    - Returns 403 for missing/invalid key (matches your current behavior/tests).
+    """
+
+    if not x_api_key:
+        raise HTTPException(status_code=403, detail="Invalid API key.")
+
+    allowed_keys = {
+        os.getenv("API_KEY_ADMIN", ""),
+        os.getenv("API_KEY_SERVICE", ""),
+    }
+
+    # If env vars are not set, the allowed set will contain empty strings.
+    # This keeps the behavior secure-by-default (no accidental open access).
+    if x_api_key not in allowed_keys:
+        raise HTTPException(status_code=403, detail="Invalid API key.")
+
+    return x_api_key
 
 
 def create_app() -> FastAPI:
@@ -27,8 +58,9 @@ def create_app() -> FastAPI:
     App factory (industry best practice).
 
     Benefits:
-    - Easier testing (TestClient can import app without side effects)
-    - Clear separation of initialization vs runtime
+    - Cleaner imports for testing
+    - Prevents side effects during module import
+    - Keeps all initialization in one place
     """
 
     app = FastAPI(
@@ -36,48 +68,33 @@ def create_app() -> FastAPI:
         version="1.0.0",
     )
 
-    # ----------------------------
-    # Middleware wiring
-    # ----------------------------
-    # Keep your existing middleware setup as-is.
-    # Example placeholders (DO NOT duplicate if you already add them elsewhere):
-    #
-    # app.add_middleware(RequestIdMiddleware)
-    # app.add_middleware(SecurityHeadersMiddleware)
-    # app.add_middleware(RateLimitMiddleware)
-    #
-    # If your project uses function-style middleware (app.middleware("http")),
-    # keep those definitions in this file or import them here.
-
-    # ----------------------------
-    # Routes
-    # ----------------------------
-
-    @app.post("/v1/predict", response_model=FraudResponse)
+    @app.post(
+        "/v1/predict",
+        response_model=FraudResponse,
+        # Dependency runs before the handler. If it fails, the handler is never executed.
+        dependencies=[Depends(require_api_key)],
+    )
     async def predict(request: Request, payload: FraudRequest) -> FraudResponse:
         """
-        Fraud prediction endpoint (strict contract).
-
-        Input:
-        - `payload` is a FraudRequest (Pydantic enforces required fields and blocks extras)
-
-        Output:
-        - FraudResponse (prevents drift and accidental leakage)
+        Fraud prediction endpoint (strict + authenticated).
 
         Security posture:
-        - Never echo raw payload back to caller
-        - Keep response minimal and non-sensitive
+        - Auth is enforced via dependency (cannot be skipped accidentally).
+        - Payload is validated by FraudRequest (required fields, extra="forbid").
+        - Response is shaped by FraudResponse (prevents drift/leakage).
+        - Never echo raw payload back to caller.
         """
 
-        # Request correlation (set by your existing request-id middleware).
-        from uuid import uuid4
+        # Correlation ID:
+        # If a request-id middleware sets request.state.request_id, use it.
+        # Otherwise, generate a valid UUID to keep schemas + logs consistent.
         request_id = getattr(request.state, "request_id", None) or str(uuid4())
 
-        # TODO: Replace this placeholder with real model inference.
-        # Keep it deterministic for now so tests remain stable.
+        # TODO: Replace with real model inference.
+        # Keep deterministic placeholder logic for stable tests/CI behavior.
         score = 0.50
 
-        # Example decision policy. Replace thresholds with your real policy.
+        # Simple decision policy mapping (replace with your real thresholds).
         if score >= 0.80:
             decision = FraudDecision.block
         elif score >= 0.50:
@@ -95,5 +112,5 @@ def create_app() -> FastAPI:
     return app
 
 
-# Uvicorn entrypoint (commonly referenced as "app.main:app")
+# Uvicorn entrypoint: "app.main:app"
 app = create_app()
