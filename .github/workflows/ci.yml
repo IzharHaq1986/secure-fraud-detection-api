@@ -5,12 +5,14 @@
 # - Lock verification via scripts/check_requirements_lock.sh
 # - Linting (Ruff)
 # - Vulnerability scanning (pip-audit)
-# - Tests with coverage enforcement (pytest-cov)
+# - SBOM generation (CycloneDX) and upload as a CI artifact
+# - Tests with scoped coverage enforcement (pytest-cov)
 #
-# Coverage policy (pragmatic, industry-aligned):
-# - Enforce high coverage (85%) on the code paths currently exercised by tests.
-# - As you add tests for audit logging, middleware, and model loading, expand the
-#   coverage scope gradually (and keep the same or higher threshold).
+# Notes:
+# - CI runners do NOT load your local .env
+# - Provide API keys via GitHub Actions Secrets:
+#     API_KEY_ADMIN
+#     API_KEY_SERVICE
 
 name: CI
 
@@ -27,9 +29,7 @@ jobs:
   ci:
     runs-on: ubuntu-latest
 
-    # CI runners do NOT load your local .env file.
-    # Provide keys via GitHub Secrets:
-    # Settings → Secrets and variables → Actions → New repository secret
+    # CI environment variables (no .env file in the runner).
     env:
       API_KEY_ADMIN: ${{ secrets.API_KEY_ADMIN }}
       API_KEY_SERVICE: ${{ secrets.API_KEY_SERVICE }}
@@ -86,8 +86,21 @@ jobs:
         run: |
           pip-audit
 
-      # Run unit tests with coverage.
-      # Enforce coverage only on modules currently exercised by tests.
+      # Generate an SBOM (Software Bill of Materials) for supply-chain visibility.
+      - name: Generate SBOM (CycloneDX)
+        run: |
+          # Create a CycloneDX SBOM from installed Python packages.
+          cyclonedx-py environment --format json --output sbom.cdx.json
+
+      # Upload SBOM as an artifact for audits and incident response.
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-cyclonedx
+          path: sbom.cdx.json
+
+      # Run unit tests with coverage (scoped to exercised modules).
+      # Fail CI if coverage drops below 85% for these modules.
       - name: Run test suite with coverage
         run: |
           pytest \
