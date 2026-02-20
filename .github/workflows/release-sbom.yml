@@ -1,0 +1,35 @@
+name: Release SBOM
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  sbom:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies (locked)
+        run: |
+          python -m pip install -r requirements.lock.txt
+
+      - name: Generate SBOM (CycloneDX)
+        run: |
+          cyclonedx-py environment --format json --output sbom.cdx.json
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: sbom.cdx.json
