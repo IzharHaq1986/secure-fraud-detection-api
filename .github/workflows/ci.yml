@@ -5,7 +5,7 @@
 # - Lock verification via scripts/check_requirements_lock.sh
 # - Linting (Ruff)
 # - Vulnerability scanning (pip-audit)
-# - SBOM generation (CycloneDX) and upload as a CI artifact
+# - SBOM generation (CycloneDX) with version-tolerant flags + upload as artifact
 # - Tests with scoped coverage enforcement (pytest-cov)
 #
 # Notes:
@@ -87,10 +87,22 @@ jobs:
           pip-audit
 
       # Generate an SBOM (Software Bill of Materials) for supply-chain visibility.
+      # CycloneDX Python CLI flags differ across versions, so we try common variants.
       - name: Generate SBOM (CycloneDX)
         run: |
-          # Create a CycloneDX SBOM from installed Python packages.
-          cyclonedx-py environment --format json --output sbom.cdx.json
+          set -euo pipefail
+
+          # Variant A (newer CLI): --spec-version and --output-file
+          if cyclonedx-py environment --spec-version 1.6 --output-format JSON --output-file sbom.cdx.json; then
+            echo "SBOM generated using --output-file/--spec-version"
+          # Variant B (older CLI): --schema-version and --outfile
+          elif cyclonedx-py environment --schema-version 1.6 --output-format JSON --outfile sbom.cdx.json; then
+            echo "SBOM generated using --outfile/--schema-version"
+          else
+            echo "ERROR: cyclonedx-py CLI flags did not match installed version."
+            echo "Hint: inspect help output with: cyclonedx-py environment --help"
+            exit 1
+          fi
 
       # Upload SBOM as an artifact for audits and incident response.
       - name: Upload SBOM artifact
