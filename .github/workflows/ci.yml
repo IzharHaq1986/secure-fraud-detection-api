@@ -5,13 +5,14 @@
 # - Lock verification via scripts/check_requirements_lock.sh
 # - Linting (Ruff)
 # - Vulnerability scanning (pip-audit)
-# - Test execution (pytest)
+# - Tests with coverage enforcement (pytest-cov)
 #
 # Important:
-# - CI runners do NOT have your local .env file.
-# - We provide API keys to tests via GitHub Actions Secrets:
-#     - API_KEY_ADMIN
-#     - API_KEY_SERVICE
+# - CI runners do NOT load your local .env
+# - API keys for tests should be provided via GitHub Actions Secrets:
+#     API_KEY_ADMIN
+#     API_KEY_SERVICE
+#   (Your tests also set defaults in tests/conftest.py for local determinism.)
 
 name: CI
 
@@ -28,10 +29,8 @@ jobs:
   ci:
     runs-on: ubuntu-latest
 
-    # Job-level environment variables (available to all steps).
+    # Provide secrets to the test environment (CI has no .env file).
     env:
-      # These must be configured in GitHub:
-      # Settings → Secrets and variables → Actions → New repository secret
       API_KEY_ADMIN: ${{ secrets.API_KEY_ADMIN }}
       API_KEY_SERVICE: ${{ secrets.API_KEY_SERVICE }}
 
@@ -87,7 +86,8 @@ jobs:
         run: |
           pip-audit
 
-      # Run unit tests explicitly from the tests/ folder.
-      - name: Run test suite
+      # Run unit tests with coverage.
+      # Fail CI if total coverage drops below 85%.
+      - name: Run test suite with coverage
         run: |
-          pytest -v tests
+          pytest --cov=app --cov-report=term-missing --cov-fail-under=85
