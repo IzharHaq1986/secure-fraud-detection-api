@@ -6,6 +6,7 @@ CacheControl==0.14.4
 certifi==2026.1.4
 charset-normalizer==3.4.4
 click==8.3.1
+coverage==7.13.4
 cyclonedx-python-lib==11.6.0
 defusedxml==0.7.1
 dnspython==2.8.0
@@ -39,6 +40,7 @@ pydantic_core==2.41.5
 Pygments==2.19.2
 pyparsing==3.3.2
 pytest==9.0.2
+pytest-cov==7.0.0
 python-dotenv==1.0.1
 python-multipart==0.0.22
 PyYAML==6.0.3
