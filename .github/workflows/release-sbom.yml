@@ -1,3 +1,15 @@
+# .github/workflows/release-sbom.yml
+#
+# Release SBOM workflow
+# - Triggers only when you push a version tag like: v1.2.3
+# - Installs dependencies from requirements.lock.txt (reproducible)
+# - Generates a CycloneDX SBOM (JSON)
+# - Creates/updates the GitHub Release for that tag and attaches the SBOM asset
+#
+# Notes:
+# - Uses a version-tolerant CycloneDX command because CLI flags vary by version.
+# - Requires "contents: write" permission to create releases and upload assets.
+
 name: Release SBOM
 
 on:
@@ -13,23 +25,41 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # Checkout repository code at the tagged commit.
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Use a consistent Python version for reproducibility.
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
+      # Install dependencies from the pinned lock file.
       - name: Install dependencies (locked)
         run: |
           python -m pip install -r requirements.lock.txt
 
+      # Generate an SBOM (Software Bill of Materials) for the installed environment.
+      # CycloneDX Python CLI flags differ across versions, so try common variants.
       - name: Generate SBOM (CycloneDX)
         run: |
-          cyclonedx-py environment --format json --output sbom.cdx.json
+          set -euo pipefail
 
-      - name: Create GitHub Release
+          # Variant A (newer CLI): --spec-version and --output-file
+          if cyclonedx-py environment --spec-version 1.6 --output-format JSON --output-file sbom.cdx.json; then
+            echo "SBOM generated using --output-file/--spec-version"
+          # Variant B (older CLI): --schema-version and --outfile
+          elif cyclonedx-py environment --schema-version 1.6 --output-format JSON --outfile sbom.cdx.json; then
+            echo "SBOM generated using --outfile/--schema-version"
+          else
+            echo "ERROR: cyclonedx-py CLI flags did not match installed version."
+            echo "Hint: inspect help output with: cyclonedx-py environment --help"
+            exit 1
+          fi
+
+      # Create the GitHub Release (if it doesn't exist) and attach the SBOM.
+      - name: Create GitHub Release and attach SBOM
         uses: softprops/action-gh-release@v2
         with:
           files: sbom.cdx.json
