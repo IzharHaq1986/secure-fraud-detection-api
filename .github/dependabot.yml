@@ -1,0 +1,17 @@
+# .github/dependabot.yml
+#
+# Dependabot configuration
+# - Automatically checks for dependency updates weekly
+# - Keeps requirements.lock.txt current
+# - Integrates with your CI (ruff + pip-audit + coverage)
+
+version: 2
+
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"                # Location of requirements.lock.txt
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps"
