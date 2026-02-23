@@ -1,4 +1,4 @@
-[CI](https://github.com/IzharHaq1986/secure-fraud-detection-api/actions/workflows/ci.yml/badge.svg)[(https://github.com/IzharHaq1986/secure-fraud-detection-api/actions/workflows/ci.yml)]
+[![CI](https://github.com/IzharHaq1986/secure-fraud-detection-api/actions/workflows/ci.yml/badge.svg)](https://github.com/IzharHaq1986/secure-fraud-detection-api/actions/workflows/ci.yml)
 
 <!-- Tech Stack Badges -->
 ![Python](https://img.shields.io/badge/Python-3.12-blue)
