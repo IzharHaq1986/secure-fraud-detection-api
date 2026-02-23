@@ -23,5 +23,5 @@ This repository uses semantic version tags to create versioned releases and atta
 ### Create a release tag
 ```bash
 # Example: bump MINOR for backward-compatible improvements
-git tag -a v1.0.0 -m "Release v1.1.0"
+git tag -a v1.1.0 -m "Release v1.1.0"
 git push origin v1.1.0
