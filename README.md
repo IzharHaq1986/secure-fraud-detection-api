@@ -15,3 +15,13 @@ Security-first fraud detection API for fintech startups. Demonstrates audit-grad
 - docs/architecture.md
 - docs/threat_model.md
 - docs/risk_matrix.md
+
+## Release process (tags + SBOM)
+
+This repository uses semantic version tags to create versioned releases and attach an SBOM.
+
+### Create a release tag
+```bash
+# Example: bump MINOR for backward-compatible improvements
+git tag -a v1.0.0 -m "Release v1.1.0"
+git push origin v1.1.0
