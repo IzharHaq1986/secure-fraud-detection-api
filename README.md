@@ -1,5 +1,17 @@
 [![CI](https://github.com/IzharHaq1986/secure-fraud-detection-api/actions/workflows/ci.yml/badge.svg)](https://github.com/IzharHaq1986/secure-fraud-detection-api/actions/workflows/ci.yml)
 
+</>
+<!-- Tech Stack Badges -->
+![Python](https://img.shields.io/badge/Python-3.12-blue)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.129-green)
+![Pydantic](https://img.shields.io/badge/Pydantic-2.x-ff69b4)
+![Ruff](https://img.shields.io/badge/Linter-Ruff-000000)
+![pytest](https://img.shields.io/badge/Tests-pytest-blueviolet)
+![Coverage](https://img.shields.io/badge/Coverage-85%25+-brightgreen)
+![Platform](https://img.shields.io/badge/Platform-Ubuntu_22.04-purple)
+![License](https://img.shields.io/badge/License-MIT-yellow)
+</>
+
 # Secure Fraud Detection API (Fintech)
 
 Security-first fraud detection API for fintech startups. Demonstrates audit-grade logging, threat modeling, RBAC, TLS-secured deployment on Ubuntu, and compliance-aligned AI architecture.
@@ -58,4 +70,4 @@ This repository uses semantic version tags to create versioned releases and atta
 # Example: bump MINOR for backward-compatible improvements
 git tag -a v1.1.0 -m "Release v1.1.0"
 git push origin v1.1.0
-```
+```bash 
