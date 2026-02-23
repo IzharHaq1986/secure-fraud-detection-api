@@ -1,6 +1,5 @@
 [![CI](https://github.com/IzharHaq1986/secure-fraud-detection-api/actions/workflows/ci.yml/badge.svg)](https://github.com/IzharHaq1986/secure-fraud-detection-api/actions/workflows/ci.yml)
 
-</>
 <!-- Tech Stack Badges -->
 ![Python](https://img.shields.io/badge/Python-3.12-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.129-green)
@@ -10,7 +9,6 @@
 ![Coverage](https://img.shields.io/badge/Coverage-85%25+-brightgreen)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu_22.04-purple)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
-</>
 
 # Secure Fraud Detection API (Fintech)
 
