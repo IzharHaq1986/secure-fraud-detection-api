@@ -120,5 +120,6 @@ jobs:
             --cov=app.main \
             --cov=app.routes \
             --cov=app.schemas \
+            --cov=app.auth \
             --cov-report=term-missing \
             --cov-fail-under=85
