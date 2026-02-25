@@ -6,3 +6,4 @@ source = app
 omit =
     app/audit_logger.py
     app/model_loader.py
+    app/runtime_info.py
