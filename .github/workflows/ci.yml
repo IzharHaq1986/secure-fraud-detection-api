@@ -15,6 +15,7 @@ permissions:
 
 jobs:
   test:
+    # Stable job name for branch protection selection
     name: Unit tests + coverage gate
     runs-on: ubuntu-latest
 
@@ -68,6 +69,7 @@ jobs:
             --cov-config=.coveragerc
 
   vuln_scan:
+    # Stable job name for branch protection selection
     name: Container vulnerability scan (Trivy)
     runs-on: ubuntu-latest
 
