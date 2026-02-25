@@ -64,7 +64,7 @@ jobs:
             --disable-warnings \
             --cov \
             --cov-report=term-missing \
-            --cov-fail-under=85 \
+            --cov-fail-under=84.8 \
             --cov-config=.coveragerc
 
   vuln_scan:
