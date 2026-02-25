@@ -80,10 +80,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Build the container image exactly as used in deployment
+      # Build the container image from the repository root context
+      # Explicit --file avoids failures if a working-directory is introduced later
       - name: Build Docker image
         run: |
-          docker build -t secure-fraud-detection-api:ci .
+          docker build \
+            --file Dockerfile \
+            --tag secure-fraud-detection-api:ci \
+            .
 
       # Generate a SARIF report so findings can appear in GitHub Security
       - name: Trivy scan (SARIF export)
