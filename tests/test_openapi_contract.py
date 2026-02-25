@@ -9,8 +9,7 @@ This test resolves $ref so we can assert on actual properties.
 
 from __future__ import annotations
 
-from app.main import app
-
+from app.main import create_app
 
 def _resolve_schema_ref(openapi: dict, schema: dict) -> dict:
     """
@@ -34,8 +33,8 @@ def _resolve_schema_ref(openapi: dict, schema: dict) -> dict:
 
 
 def test_openapi_predict_contract() -> None:
+    app = create_app()
     openapi = app.openapi()
-
     # Ensure the path exists
     assert "/v1/predict" in openapi["paths"]
 
