@@ -51,8 +51,9 @@ jobs:
           if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
           if [ -f dev-requirements.txt ]; then pip install -r dev-requirements.txt; fi
 
-          # Ensure pytest tooling exists even if not listed in requirements files
-          pip install pytest pytest-cov
+          # Ensure test tooling exists even if not listed in requirements files
+          # httpx is required by starlette.testclient in test suites
+          pip install pytest pytest-cov httpx
 
       # Run tests with coverage and enforce the minimum threshold
       - name: Run pytest with coverage gate
