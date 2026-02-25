@@ -52,18 +52,20 @@ jobs:
           if [ -f dev-requirements.txt ]; then pip install -r dev-requirements.txt; fi
 
           # Ensure test tooling exists even if not listed in requirements files
-          # httpx is required by starlette.testclient in test suites
+          # httpx is required by starlette.testclient in many FastAPI test suites
           pip install pytest pytest-cov httpx
 
       # Run tests with coverage and enforce the minimum threshold
+      # --cov-config points to .coveragerc (repo root) for omit/source rules
       - name: Run pytest with coverage gate
         run: |
           pytest \
             --maxfail=1 \
             --disable-warnings \
-            --cov=. \
+            --cov \
             --cov-report=term-missing \
-            --cov-fail-under=85
+            --cov-fail-under=85 \
+            --cov-config=.coveragerc
 
   vuln_scan:
     name: Container vulnerability scan (Trivy)
