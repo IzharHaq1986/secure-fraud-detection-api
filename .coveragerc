@@ -1,0 +1,8 @@
+[run]
+# Measure coverage for application code only.
+source = app
+
+# Exclude files that are currently integration-only or not executed in unit tests.
+omit =
+    app/audit_logger.py
+    app/model_loader.py
