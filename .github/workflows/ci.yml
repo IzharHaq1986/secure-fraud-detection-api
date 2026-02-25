@@ -6,8 +6,8 @@ on:
       - main
   pull_request:
 
-# Keep permissions explicit.
-# - contents:read is enough for checkout
+# Keep permissions explicit and minimal.
+# - contents:read is sufficient for repository checkout
 # - security-events:write is required to upload SARIF results
 permissions:
   contents: read
@@ -19,17 +19,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout repository content for the workflow run
+      # Fetch repository content for the workflow run
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Install the Python version used by the project
+      # Use a consistent Python version in CI
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      # Cache pip downloads to speed up subsequent runs
+      # Cache pip downloads to speed up repeated CI runs
       - name: Cache pip
         uses: actions/cache@v4
         with:
@@ -38,13 +38,21 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
-      # Install dependencies required for tests
+      # Install application + test dependencies
+      # CI should not rely on local developer environment state
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          # Install dev/test dependencies if a separate file exists
+
+          # Install application dependencies if present
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+          # Install dev/test dependencies if present (common filenames supported)
           if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+          if [ -f dev-requirements.txt ]; then pip install -r dev-requirements.txt; fi
+
+          # Ensure pytest tooling exists even if not listed in requirements files
+          pip install pytest pytest-cov
 
       # Run tests with coverage and enforce the minimum threshold
       - name: Run pytest with coverage gate
@@ -65,7 +73,7 @@ jobs:
       - test
 
     steps:
-      # Checkout repository content for the Docker build context
+      # Fetch repository content for Docker build context
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -74,7 +82,7 @@ jobs:
         run: |
           docker build -t secure-fraud-detection-api:ci .
 
-      # Generate a SARIF report for GitHub Security (HIGH/CRITICAL)
+      # Generate a SARIF report so findings can appear in GitHub Security
       - name: Trivy scan (SARIF export)
         uses: aquasecurity/trivy-action@0.24.0
         with:
@@ -83,14 +91,14 @@ jobs:
           output: trivy-results.sarif
           severity: HIGH,CRITICAL
 
-      # Upload SARIF so findings appear under Security → Code scanning alerts
+      # Upload SARIF results to GitHub Security → Code scanning alerts
       - name: Upload SARIF to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-results.sarif
 
-      # Fail the build if CRITICAL vulnerabilities are detected
-      # - ignore-unfixed:true avoids failing on issues without an available fix
+      # Fail the job if CRITICAL vulnerabilities are detected
+      # ignore-unfixed:true avoids failing on issues without an available fix
       - name: Fail on CRITICAL vulnerabilities
         uses: aquasecurity/trivy-action@0.24.0
         with:
