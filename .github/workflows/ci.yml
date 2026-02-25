@@ -80,14 +80,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Build the container image from the repository root context
-      # Explicit --file avoids failures if a working-directory is introduced later
+      # Confirm the Dockerfile exists in the runner workspace
+      # This protects against misconfigured checkout paths or unexpected working directories
+      - name: Verify Dockerfile exists
+        run: |
+          echo "Workspace: $GITHUB_WORKSPACE"
+          ls -la "$GITHUB_WORKSPACE"
+          test -f "$GITHUB_WORKSPACE/Dockerfile"
+
+      # Build the container image using the workspace as the build context
+      # Using absolute paths avoids "Dockerfile not found" errors
       - name: Build Docker image
         run: |
           docker build \
-            --file Dockerfile \
+            --file "$GITHUB_WORKSPACE/Dockerfile" \
             --tag secure-fraud-detection-api:ci \
-            .
+            "$GITHUB_WORKSPACE"
 
       # Generate a SARIF report so findings can appear in GitHub Security
       - name: Trivy scan (SARIF export)
