@@ -1,0 +1,100 @@
+name: docker-smoke
+
+on:
+  pull_request:
+  push:
+    branches: ["main"]
+
+jobs:
+  smoke:
+    name: Build + Run + Health Smoke Test
+    runs-on: ubuntu-latest
+
+    steps:
+      # Pull repository contents so Docker has a build context
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Build the production runtime image (distroless tag used for consistency)
+      - name: Build distroless image
+        run: |
+          set -euo pipefail
+          docker build -t secure-fraud-api:distroless .
+
+      # Start the container, wait for Docker HEALTHCHECK to report healthy, then hit /health
+      #
+      # Notes:
+      # - Cleanup intentionally runs at the end of the step so the container still exists
+      #   for the "Upload container logs" step when failures occur.
+      - name: Run container and verify health
+        run: |
+          set -euo pipefail
+
+          container_name="secure-fraud-api"
+          image_name="secure-fraud-api:distroless"
+          host_port="8000"
+          container_port="8000"
+
+          # Ensure a clean slate in case the runner is reused
+          docker rm -f "${container_name}" >/dev/null 2>&1 || true
+
+          # Start container in the background
+          docker run -d \
+            --name "${container_name}" \
+            -p "${host_port}:${container_port}" \
+            "${image_name}"
+
+          # Wait for Docker HEALTHCHECK (up to ~60 seconds)
+          for attempt in {1..30}; do
+            status="$(docker inspect -f '{{.State.Health.Status}}' "${container_name}" 2>/dev/null || echo 'unknown')"
+
+            if [ "${status}" = "healthy" ]; then
+              echo "Container healthcheck passed."
+              break
+            fi
+
+            if [ "${status}" = "unhealthy" ]; then
+              echo "Container reported unhealthy."
+              docker logs "${container_name}" || true
+              exit 1
+            fi
+
+            # Covers "starting" and "unknown" states
+            sleep 2
+          done
+
+          # Fail if the container never became healthy within the timeout window
+          final_status="$(docker inspect -f '{{.State.Health.Status}}' "${container_name}" 2>/dev/null || echo 'unknown')"
+          if [ "${final_status}" != "healthy" ]; then
+            echo "Container did not become healthy within timeout."
+            docker logs "${container_name}" || true
+            exit 1
+          fi
+
+          # Smoke request validates network path and endpoint response
+          curl -fsS "http://localhost:${host_port}/health" | head -c 200
+
+      # Capture container logs only when the job fails
+      - name: Capture container logs (failure only)
+        if: failure()
+        run: |
+          set -euo pipefail
+
+          # Capture logs even if the container already exited
+          docker logs secure-fraud-api > secure-fraud-api-container.log 2>&1 || true
+
+      # Publish the failure logs as a GitHub Actions artifact
+      - name: Publish logs artifact (failure only)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: secure-fraud-api-container-logs
+          path: secure-fraud-api-container.log
+          if-no-files-found: warn
+
+      # Always remove the container to keep the runner clean
+      - name: Cleanup container (always)
+        if: always()
+        run: |
+          set -euo pipefail
+          docker rm -f secure-fraud-api >/dev/null 2>&1 || true

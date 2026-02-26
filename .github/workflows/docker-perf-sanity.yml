@@ -1,0 +1,82 @@
+name: docker-perf-sanity
+
+on:
+  pull_request:
+  push:
+    branches: ["main"]
+
+jobs:
+  perf_sanity:
+    name: Perf Sanity (container + /health)
+    runs-on: ubuntu-latest
+
+    steps:
+      # Pull repository contents so Docker has a build context
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Build the production runtime image (distroless tag used for consistency)
+      - name: Build distroless image
+        run: |
+          set -euo pipefail
+          docker build -t secure-fraud-api:distroless .
+
+      # Run the container and wait for Docker HEALTHCHECK
+      - name: Run container and wait for health
+        run: |
+          set -euo pipefail
+
+          container_name="secure-fraud-api"
+          image_name="secure-fraud-api:distroless"
+          host_port="8000"
+          container_port="8000"
+
+          docker rm -f "${container_name}" >/dev/null 2>&1 || true
+
+          docker run -d \
+            --name "${container_name}" \
+            -p "${host_port}:${container_port}" \
+            "${image_name}"
+
+          for attempt in {1..30}; do
+            status="$(docker inspect -f '{{.State.Health.Status}}' "${container_name}" 2>/dev/null || echo 'unknown')"
+
+            if [ "${status}" = "healthy" ]; then
+              echo "Container healthcheck passed."
+              break
+            fi
+
+            if [ "${status}" = "unhealthy" ]; then
+              echo "Container reported unhealthy."
+              docker logs "${container_name}" || true
+              exit 1
+            fi
+
+            sleep 2
+          done
+
+          final_status="$(docker inspect -f '{{.State.Health.Status}}' "${container_name}" 2>/dev/null || echo 'unknown')"
+          if [ "${final_status}" != "healthy" ]; then
+            echo "Container did not become healthy within timeout."
+            docker logs "${container_name}" || true
+            exit 1
+          fi
+
+      # Install a small HTTP load tool and run a short, bounded test
+      - name: Load test /health (short)
+        run: |
+          set -euo pipefail
+
+          sudo apt-get update
+          sudo apt-get install -y apache2-utils
+
+          # 200 requests, concurrency 20
+          ab -n 200 -c 20 http://127.0.0.1:8000/health
+
+      # Always remove the container to keep the runner clean
+      - name: Cleanup container (always)
+        if: always()
+        run: |
+          set -euo pipefail
+          docker rm -f secure-fraud-api >/dev/null 2>&1 || true
+
