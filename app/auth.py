@@ -1,102 +1,43 @@
+# app/auth.py
 """
-auth.py
+Authentication helpers.
 
-Minimal API-key authentication + role mapping for the Secure Fraud Detection API.
-
-Security intent:
-- Keep v1 simple (no DB, no user system).
-- Map known API keys -> roles.
-- Never log raw API keys.
+This module exists to avoid circular imports:
+- main.py registers routers
+- routers need auth dependencies
+- therefore auth must NOT live in main.py
 """
+
+from __future__ import annotations
 
 import os
-from dataclasses import dataclass
-from typing import Optional
 
-from fastapi import HTTPException, status
+from fastapi import Header, HTTPException
 
 
-@dataclass(frozen=True)
-class CallerIdentity:
+def require_api_key(x_api_key: str | None = Header(default=None)) -> str:
     """
-    Minimal identity returned after authentication.
+    Enforce API-key authentication.
 
-    role:
-        Authorization tier for the caller (e.g., 'admin', 'service').
+    - Reads API key from the `x-api-key` header.
+    - Valid keys are read from environment variables:
+        * API_KEY_ADMIN
+        * API_KEY_SERVICE
+    - Returns HTTP 403 for missing/invalid key.
 
-    key_id:
-        A non-sensitive identifier for audit logs. This is NOT the raw key.
+    Secure-by-default:
+    - If env keys are missing, no request is allowed.
     """
-    role: str
-    key_id: str
 
+    if not x_api_key:
+        raise HTTPException(status_code=403, detail="Invalid API key.")
 
-def _read_env_value(name: str) -> str:
-    """
-    Read an environment variable and normalize it.
-
-    Returns:
-        A stripped string value. If missing, returns empty string.
-    """
-    value = os.getenv(name, "")
-    return value.strip()
-
-
-def _load_api_keys() -> dict:
-    """
-    Load API keys from environment variables.
-
-    Expected variables:
-    - API_KEY_ADMIN
-    - API_KEY_SERVICE
-    """
-    return {
-        "admin": _read_env_value("API_KEY_ADMIN"),
-        "service": _read_env_value("API_KEY_SERVICE"),
+    allowed_keys = {
+        os.getenv("API_KEY_ADMIN", ""),
+        os.getenv("API_KEY_SERVICE", ""),
     }
 
+    if x_api_key not in allowed_keys:
+        raise HTTPException(status_code=403, detail="Invalid API key.")
 
-def authenticate(x_api_key: Optional[str]) -> CallerIdentity:
-    """
-    Validate an incoming API key and return a CallerIdentity.
-
-    Args:
-        x_api_key:
-            The raw value of the X-API-Key header (may be None).
-
-    Raises:
-        HTTPException 401 if missing.
-        HTTPException 403 if invalid or not configured.
-
-    Returns:
-        CallerIdentity describing the authenticated caller.
-    """
-    if not x_api_key or not x_api_key.strip():
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing API key (X-API-Key).",
-        )
-
-    provided_key = x_api_key.strip()
-    keys = _load_api_keys()
-
-    admin_key = keys.get("admin", "")
-    service_key = keys.get("service", "")
-
-    # If keys are not configured, fail closed.
-    if not admin_key and not service_key:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="API keys are not configured on the server.",
-        )
-
-    if admin_key and provided_key == admin_key:
-        return CallerIdentity(role="admin", key_id="admin-key")
-
-    if service_key and provided_key == service_key:
-        return CallerIdentity(role="service", key_id="service-key")
-
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="Invalid API key.",
-    )
+    return x_api_key
