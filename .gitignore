@@ -5,3 +5,4 @@ venv/
 .env.*
 logs/
 .coverage
+sbom.cdx.json
