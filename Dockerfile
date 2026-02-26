@@ -1,5 +1,5 @@
 # Use a slim, secure Python base image
-FROM python:3.14-slim
+FROM python:3.14-slim-bookworm
 
 # Prevent Python from writing .pyc files
 ENV PYTHONDONTWRITEBYTECODE=1
