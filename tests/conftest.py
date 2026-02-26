@@ -34,3 +34,7 @@ if str(PROJECT_ROOT) not in sys.path:
 # These values MUST match what your tests use in VALID_HEADERS in tests/test_predict.py.
 os.environ.setdefault("API_KEY_ADMIN", "admin-secret-123")
 os.environ.setdefault("API_KEY_SERVICE", "service-secret-123")
+
+# Enable "test mode" configuration in the app.
+# The app will use a very small rate limit threshold when this is set.
+os.environ.setdefault("APP_ENV", "test")

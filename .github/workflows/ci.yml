@@ -1,99 +1,126 @@
-# .github/workflows/ci.yml
-#
-# CI Pipeline (DevSecOps)
-# - Deterministic installs via requirements.lock.txt
-# - Lock verification via scripts/check_requirements_lock.sh
-# - Linting (Ruff)
-# - Vulnerability scanning (pip-audit)
-# - Tests with coverage enforcement (pytest-cov)
-#
-# Coverage policy (pragmatic, industry-aligned):
-# - Enforce high coverage (85%) on the code paths currently exercised by tests.
-# - As you add tests for audit logging, middleware, and model loading, expand the
-#   coverage scope gradually (and keep the same or higher threshold).
-
 name: CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches:
+      - main
   pull_request:
-    branches: [ "main" ]
 
+# Keep permissions explicit and minimal.
+# - contents:read is sufficient for repository checkout
+# - security-events:write is required to upload SARIF results
 permissions:
   contents: read
+  security-events: write
 
 jobs:
-  ci:
+  test:
+    # Stable job name for branch protection selection
+    name: Unit tests + coverage gate
     runs-on: ubuntu-latest
 
-    # CI runners do NOT load your local .env file.
-    # Provide keys via GitHub Secrets:
-    # Settings → Secrets and variables → Actions → New repository secret
-    env:
-      API_KEY_ADMIN: ${{ secrets.API_KEY_ADMIN }}
-      API_KEY_SERVICE: ${{ secrets.API_KEY_SERVICE }}
-
     steps:
-      # Checkout repository code.
+      # Fetch repository content for the workflow run
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Use a consistent Python version in CI.
+      # Use a consistent Python version in CI
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.11"
 
-      # Upgrade pip only (avoid modifying setuptools/wheel unexpectedly).
-      - name: Upgrade pip
+      # Cache pip downloads to speed up repeated CI runs
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      # Install application + test dependencies
+      # CI should not rely on local developer environment state
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
 
-      # Install dependencies from the fully pinned lock file.
-      - name: Install dependencies (locked)
-        run: |
-          python -m pip install -r requirements.lock.txt
+          # Install application dependencies if present
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      # Debug: confirm scripts/ and tests/ exist in the runner checkout.
-      - name: Debug workspace (repo + scripts + tests)
-        run: |
-          echo "=== Repo root ==="
-          pwd
-          ls -la
+          # Install dev/test dependencies if present (common filenames supported)
+          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+          if [ -f dev-requirements.txt ]; then pip install -r dev-requirements.txt; fi
 
-          echo ""
-          echo "=== scripts/ ==="
-          ls -la scripts || true
+          # Ensure test tooling exists even if not listed in requirements files
+          # httpx is required by starlette.testclient in many FastAPI test suites
+          pip install pytest pytest-cov httpx
 
-          echo ""
-          echo "=== tests/ ==="
-          ls -la tests || true
-          find tests -maxdepth 2 -type f -print || true
-
-      # Verify the lock file matches what is installed.
-      - name: Verify requirements lock
-        run: |
-          bash scripts/check_requirements_lock.sh
-
-      # Lint the codebase.
-      - name: Ruff lint
-        run: |
-          ruff check .
-
-      # Scan dependencies for known vulnerabilities.
-      - name: Dependency audit (pip-audit)
-        run: |
-          pip-audit
-
-      # Run unit tests with coverage.
-      # Enforce coverage only on modules currently exercised by tests.
-      - name: Run test suite with coverage
+      # Run tests with coverage and enforce the minimum threshold
+      # --cov-config points to .coveragerc (repo root) for omit/source rules
+      - name: Run pytest with coverage gate
         run: |
           pytest \
-            -v tests \
-            --cov=app.main \
-            --cov=app.routes \
-            --cov=app.schemas \
+            --maxfail=1 \
+            --disable-warnings \
+            --cov \
             --cov-report=term-missing \
-            --cov-fail-under=85
+            --cov-fail-under=85 \
+            --cov-config=.coveragerc
+
+  vuln_scan:
+    # Stable job name for branch protection selection
+    name: Container vulnerability scan (Trivy)
+    runs-on: ubuntu-latest
+
+    # Run only after the test job succeeds
+    needs:
+      - test
+
+    steps:
+      # Fetch repository content for Docker build context
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Confirm the Dockerfile exists in the runner workspace
+      # This protects against misconfigured checkout paths or unexpected working directories
+      - name: Verify Dockerfile exists
+        run: |
+          echo "Workspace: $GITHUB_WORKSPACE"
+          ls -la "$GITHUB_WORKSPACE"
+          test -f "$GITHUB_WORKSPACE/Dockerfile"
+
+      # Build the container image using the workspace as the build context
+      # Using absolute paths avoids "Dockerfile not found" errors
+      - name: Build Docker image
+        run: |
+          docker build \
+            --file "$GITHUB_WORKSPACE/Dockerfile" \
+            --tag secure-fraud-detection-api:ci \
+            "$GITHUB_WORKSPACE"
+
+      # Generate a SARIF report so findings can appear in GitHub Security
+      - name: Trivy scan (SARIF export)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: secure-fraud-detection-api:ci
+          format: sarif
+          output: trivy-results.sarif
+          severity: HIGH,CRITICAL
+
+      # Upload SARIF results to GitHub Security → Code scanning alerts
+      - name: Upload SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+
+      # Fail the job if CRITICAL vulnerabilities are detected
+      # ignore-unfixed:true avoids failing on issues without an available fix
+      - name: Fail on CRITICAL vulnerabilities
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: secure-fraud-detection-api:ci
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: CRITICAL

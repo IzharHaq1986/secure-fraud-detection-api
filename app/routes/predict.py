@@ -22,8 +22,8 @@ from __future__ import annotations
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Request
+from app.auth import require_api_key
 
-from app.main import require_api_key
 from app.schemas import FraudDecision, FraudRequest, FraudResponse
 
 router = APIRouter()
