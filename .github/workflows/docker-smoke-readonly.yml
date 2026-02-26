@@ -1,0 +1,75 @@
+name: docker-smoke-readonly
+
+on:
+  pull_request:
+  push:
+    branches: ["main"]
+
+jobs:
+  smoke_readonly:
+    name: Build + Run (read-only) + Health Smoke Test
+    runs-on: ubuntu-latest
+
+    steps:
+      # Pull repository contents so Docker has a build context
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Build the production runtime image (distroless tag used for consistency)
+      - name: Build distroless image
+        run: |
+          set -euo pipefail
+          docker build -t secure-fraud-api:distroless .
+
+      # Run with a read-only root filesystem and a writable /tmp tmpfs
+      - name: Run container (read-only) and verify health
+        run: |
+          set -euo pipefail
+
+          container_name="secure-fraud-api-ro"
+          image_name="secure-fraud-api:distroless"
+          host_port="8000"
+          container_port="8000"
+
+          docker rm -f "${container_name}" >/dev/null 2>&1 || true
+
+          docker run -d \
+            --name "${container_name}" \
+            --read-only \
+            --tmpfs /tmp \
+            -p "${host_port}:${container_port}" \
+            "${image_name}"
+
+          # Wait for Docker HEALTHCHECK (up to ~60 seconds)
+          for attempt in {1..30}; do
+            status="$(docker inspect -f '{{.State.Health.Status}}' "${container_name}" 2>/dev/null || echo 'unknown')"
+
+            if [ "${status}" = "healthy" ]; then
+              echo "Container healthcheck passed."
+              break
+            fi
+
+            if [ "${status}" = "unhealthy" ]; then
+              echo "Container reported unhealthy."
+              docker logs "${container_name}" || true
+              exit 1
+            fi
+
+            sleep 2
+          done
+
+          final_status="$(docker inspect -f '{{.State.Health.Status}}' "${container_name}" 2>/dev/null || echo 'unknown')"
+          if [ "${final_status}" != "healthy" ]; then
+            echo "Container did not become healthy within timeout."
+            docker logs "${container_name}" || true
+            exit 1
+          fi
+
+          curl -fsS "http://localhost:${host_port}/health" | head -c 200
+
+      # Always remove the container to keep the runner clean
+      - name: Cleanup container (always)
+        if: always()
+        run: |
+          set -euo pipefail
+          docker rm -f secure-fraud-api-ro >/dev/null 2>&1 || true
