@@ -45,9 +45,12 @@ COPY --from=builder /install /usr/local
 COPY --from=builder /app/app /app/app
 
 # Ensure the application package is discoverable
-ENV PYTHONPATH=/app
+ENV PYTHONPATH=/app:/usr/local/lib/python3.11/site-packages
 
 # FastAPI entrypoint
 # - Use module execution so uvicorn resolves from /usr/local/bin
 # - Bind to all interfaces for container networking
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+  CMD ["/usr/bin/python3.11","-c","import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).read()"]
+
 CMD ["-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
