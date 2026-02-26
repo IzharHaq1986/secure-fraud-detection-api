@@ -64,7 +64,7 @@ rfc3987-syntax==1.1.0
 rich==14.3.2
 rich-toolkit==0.19.4
 rpds-py==0.30.0
-ruff==0.15.1
+ruff==0.15.2
 setuptools==82.0.0
 shellingham==1.5.4
 six==1.17.0
