@@ -63,9 +63,9 @@ secure-fraud-detection-api/
 ## Release process (tags + SBOM)
 This repository uses semantic version tags to create versioned releases and attach an SBOM.
 
-### Create a release tag
+## Container Image (GHCR)
+
+Pull the immutable release image:
+
 ```bash
-# Example: bump MINOR for backward-compatible improvements
-git tag -a v1.1.0 -m "Release v1.1.0"
-git push origin v1.1.0
-```bash 
+docker pull ghcr.io/izharhaq1986/secure-fraud-detection-api:v1.0.5
