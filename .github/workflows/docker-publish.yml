@@ -1,0 +1,82 @@
+name: Publish container image to GHCR
+
+on:
+  push:
+    # Publish only when a version tag is pushed.
+    # Example tags: v1.0.3, v1.2.0, v2.0.0
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  # Prevent parallel publish runs for the same ref.
+  group: ghcr-publish-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    name: Build and publish image
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout repository content to access Dockerfile and source code.
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Enable Buildx for modern build features (cache, multi-platform if needed later).
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Authenticate to GitHub Container Registry (GHCR).
+      # GITHUB_TOKEN is sufficient when permissions.packages: write is enabled.
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Normalize image name:
+      # - GHCR requires lowercase.
+      # - Image path uses the repository owner by default.
+      - name: Prepare image metadata
+        id: meta
+        run: |
+          set -euo pipefail
+
+          IMAGE_OWNER="$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
+          IMAGE_NAME="secure-fraud-detection-api"
+          VERSION_TAG="${GITHUB_REF_NAME}"
+
+          echo "image=ghcr.io/${IMAGE_OWNER}/${IMAGE_NAME}" >> "${GITHUB_OUTPUT}"
+          echo "version=${VERSION_TAG}" >> "${GITHUB_OUTPUT}"
+
+      # Build and push:
+      # - Push two tags: version tag + latest
+      # - Use GitHub Actions cache to speed up repeat builds
+      - name: Build and push (version + latest)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+
+          # Version tag is derived from git tag (github.ref_name).
+          tags: |
+            ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}
+            ${{ steps.meta.outputs.image }}:latest
+
+          # Build cache for faster releases.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Helpful output in workflow logs for quick verification.
+      - name: Print published image references
+        run: |
+          set -euo pipefail
+          echo "Published:"
+          echo "  ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}"
+          echo "  ${{ steps.meta.outputs.image }}:latest"
