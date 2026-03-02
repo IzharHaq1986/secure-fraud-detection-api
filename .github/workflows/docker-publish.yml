@@ -63,7 +63,9 @@ jobs:
       # Build and push:
       # - Two tags: immutable version tag + convenience latest tag
       # - GitHub Actions cache speeds up repeat builds
+      # - The step id is used to capture the pushed image digest for signing
       - name: Build and push (version + latest)
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -79,16 +81,14 @@ jobs:
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3
 
-      # Sign the immutable release image tag.
-      # Keyless signing uses GitHub OIDC identity, no private keys stored.
-      - name: Sign image (Cosign keyless)
-        env:
-          COSIGN_EXPERIMENTAL: "true"
+      # Sign the immutable digest for the release image.
+      # Signing by digest prevents tag drift and is the preferred supply-chain practice.
+      - name: Sign image (Cosign keyless, by digest)
         run: |
           set -euo pipefail
 
-          IMAGE_REF="${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}"
-          cosign sign "${IMAGE_REF}"
+          IMAGE_DIGEST_REF="${{ steps.meta.outputs.image }}@${{ steps.build.outputs.digest }}"
+          cosign sign --yes "${IMAGE_DIGEST_REF}"
 
       # Generate an SBOM (Software Bill of Materials) for the published release image.
       # SPDX JSON is widely accepted and works well with many security tools.
@@ -121,3 +121,5 @@ jobs:
           echo "Published:"
           echo "  ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}"
           echo "  ${{ steps.meta.outputs.image }}:latest"
+          echo "Digest:"
+          echo "  ${{ steps.meta.outputs.image }}@${{ steps.build.outputs.digest }}"
