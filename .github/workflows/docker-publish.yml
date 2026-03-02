@@ -3,22 +3,28 @@ name: Publish container image to GHCR
 on:
   push:
     # Publish only when a version tag is pushed.
-    # Example tags: v1.0.3, v1.2.0, v2.0.0
+    # Example tags: v1.0.6, v1.2.0, v2.0.0
     tags:
       - "v*"
 
 permissions:
+  # Read repository contents for Docker build context.
   contents: read
+
+  # Push container images to GitHub Container Registry (GHCR).
   packages: write
 
+  # Required for Cosign keyless signing via GitHub Actions OIDC.
+  id-token: write
+
 concurrency:
-  # Prevent parallel publish runs for the same ref.
+  # Prevent parallel publish runs for the same tag.
   group: ghcr-publish-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   publish:
-    name: Build and publish image
+    name: Build, sign, and publish image
     runs-on: ubuntu-latest
 
     steps:
@@ -26,12 +32,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Enable Buildx for modern build features (cache, multi-platform if needed later).
+      # Enable Buildx for modern build features (cache, future multi-platform support).
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       # Authenticate to GitHub Container Registry (GHCR).
-      # GITHUB_TOKEN is sufficient when permissions.packages: write is enabled.
+      # GITHUB_TOKEN is sufficient when packages: write permission is enabled.
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -41,7 +47,7 @@ jobs:
 
       # Normalize image name:
       # - GHCR requires lowercase.
-      # - Image path uses the repository owner by default.
+      # - Repository owner is used as the namespace.
       - name: Prepare image metadata
         id: meta
         run: |
@@ -55,31 +61,34 @@ jobs:
           echo "version=${VERSION_TAG}" >> "${GITHUB_OUTPUT}"
 
       # Build and push:
-      # - Push two tags: version tag + latest
-      # - Use GitHub Actions cache to speed up repeat builds
+      # - Two tags: immutable version tag + convenience latest tag
+      # - GitHub Actions cache speeds up repeat builds
       - name: Build and push (version + latest)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
           push: true
-
-          # Version tag is derived from git tag (github.ref_name).
           tags: |
             ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}
             ${{ steps.meta.outputs.image }}:latest
-
-          # Build cache for faster releases.
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Helpful output in workflow logs for quick verification.
-      - name: Print published image references
+      # Install Cosign for keyless signing via GitHub Actions OIDC.
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      # Sign the immutable release image tag.
+      # Keyless signing uses GitHub OIDC identity, no private keys stored.
+      - name: Sign image (Cosign keyless)
+        env:
+          COSIGN_EXPERIMENTAL: "true"
         run: |
           set -euo pipefail
-          echo "Published:"
-          echo "  ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}"
-          echo "  ${{ steps.meta.outputs.image }}:latest"
+
+          IMAGE_REF="${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}"
+          cosign sign "${IMAGE_REF}"
 
       # Generate an SBOM (Software Bill of Materials) for the published release image.
       # SPDX JSON is widely accepted and works well with many security tools.
@@ -104,3 +113,11 @@ jobs:
           name: sbom-spdx-json
           path: sbom.spdx.json
           if-no-files-found: error
+
+      # Helpful output in workflow logs for quick verification.
+      - name: Print published image references
+        run: |
+          set -euo pipefail
+          echo "Published:"
+          echo "  ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}"
+          echo "  ${{ steps.meta.outputs.image }}:latest"
