@@ -2,42 +2,58 @@ name: Publish container image to GHCR
 
 on:
   push:
-    # Publish only when a version tag is pushed.
-    # Example tags: v1.0.6, v1.2.0, v2.0.0
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to publish (example: v1.0.8). If empty, uses the Git ref name."
+        required: false
+        default: ""
 
 permissions:
-  # Read repository contents for Docker build context.
-  contents: read
-
-  # Push container images to GitHub Container Registry (GHCR).
+  contents: write
   packages: write
-
-  # Required for Cosign keyless signing via GitHub Actions OIDC.
   id-token: write
-
-concurrency:
-  # Prevent parallel publish runs for the same tag.
-  group: ghcr-publish-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   publish:
-    name: Build, sign, and publish image
+    name: Build, push, sign, and enforce verification
     runs-on: ubuntu-latest
 
+    env:
+      IMAGE_REPO: ghcr.io/izharhaq1986/secure-fraud-detection-api
+
     steps:
-      # Checkout repository content to access Dockerfile and source code.
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Enable Buildx for modern build features (cache, future multi-platform support).
+      - name: Determine image tag
+        id: tag
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # For workflow_dispatch, allow an explicit tag. Otherwise use the pushed git tag.
+          if [ -n "${{ inputs.image_tag }}" ]
+          then
+            IMAGE_TAG="${{ inputs.image_tag }}"
+          else
+            IMAGE_TAG="${{ github.ref_name }}"
+          fi
+
+          if [ -z "${IMAGE_TAG}" ]
+          then
+            echo "IMAGE_TAG is empty"
+            exit 1
+          fi
+
+          echo "image_tag=${IMAGE_TAG}" >> "${GITHUB_OUTPUT}"
+          echo "Publishing ${IMAGE_REPO}:${IMAGE_TAG}"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Authenticate to GitHub Container Registry (GHCR).
-      # GITHUB_TOKEN is sufficient when packages: write permission is enabled.
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -45,68 +61,46 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Normalize image name:
-      # - GHCR requires lowercase.
-      # - Repository owner is used as the namespace.
-      - name: Prepare image metadata
+      - name: Docker metadata
         id: meta
-        run: |
-          set -euo pipefail
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_REPO }}
+          tags: |
+            type=raw,value=${{ steps.tag.outputs.image_tag }}
 
-          IMAGE_OWNER="$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
-          IMAGE_NAME="secure-fraud-detection-api"
-          VERSION_TAG="${GITHUB_REF_NAME}"
-
-          echo "image=ghcr.io/${IMAGE_OWNER}/${IMAGE_NAME}" >> "${GITHUB_OUTPUT}"
-          echo "version=${VERSION_TAG}" >> "${GITHUB_OUTPUT}"
-
-      # Build and push:
-      # - Two tags: immutable version tag + convenience latest tag
-      # - GitHub Actions cache speeds up repeat builds
-      # - The step id is used to capture the pushed image digest for signing
-      - name: Build and push (version + latest)
+      - name: Build and push image
         id: build
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./Dockerfile
           push: true
-          tags: |
-            ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}
-            ${{ steps.meta.outputs.image }}:latest
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Uses GitHub Actions cache for faster rebuilds.
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Install Cosign for keyless signing via GitHub Actions OIDC.
-      - name: Install Cosign
-        uses: sigstore/cosign-installer@v3
+      - name: Install Syft
+        uses: anchore/sbom-action/download-syft@v0.16.0
 
-      # Sign the immutable digest for the release image.
-      # Signing by digest prevents tag drift and is the preferred supply-chain practice.
-      - name: Sign image (Cosign keyless, by digest)
+      - name: Generate SBOM (SPDX JSON) for pushed digest
+        shell: bash
         run: |
           set -euo pipefail
 
-          IMAGE_DIGEST_REF="${{ steps.meta.outputs.image }}@${{ steps.build.outputs.digest }}"
-          cosign sign --yes "${IMAGE_DIGEST_REF}"
+          DIGEST="${{ steps.build.outputs.digest }}"
+          if [ -z "${DIGEST}" ]
+          then
+            echo "Missing build digest output"
+            exit 1
+          fi
 
-      # Generate an SBOM (Software Bill of Materials) for the published release image.
-      # SPDX JSON is widely accepted and works well with many security tools.
-      - name: Install Syft (SBOM generator)
-        run: |
-          set -euo pipefail
-          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+          IMAGE_DIGEST_REF="${IMAGE_REPO}@${DIGEST}"
+          echo "Generating SBOM for ${IMAGE_DIGEST_REF}"
 
-      # Create the SBOM from the pushed image tag (immutable release tag).
-      # This guarantees SBOM matches the shipped artifact.
-      - name: Generate SBOM (SPDX JSON)
-        run: |
-          set -euo pipefail
+          syft "${IMAGE_DIGEST_REF}" -o spdx-json=sbom.spdx.json
 
-          IMAGE_REF="${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}"
-          syft "${IMAGE_REF}" -o spdx-json > sbom.spdx.json
-
-      # Upload SBOM so it is available for review and audit on every release publish run.
       - name: Upload SBOM artifact
         uses: actions/upload-artifact@v4
         with:
@@ -114,12 +108,53 @@ jobs:
           path: sbom.spdx.json
           if-no-files-found: error
 
-      # Helpful output in workflow logs for quick verification.
-      - name: Print published image references
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: "v2.2.4"
+
+      - name: Cosign sign (keyless, by digest)
+        shell: bash
         run: |
           set -euo pipefail
-          echo "Published:"
-          echo "  ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}"
-          echo "  ${{ steps.meta.outputs.image }}:latest"
-          echo "Digest:"
-          echo "  ${{ steps.meta.outputs.image }}@${{ steps.build.outputs.digest }}"
+
+          DIGEST="${{ steps.build.outputs.digest }}"
+          if [ -z "${DIGEST}" ]
+          then
+            echo "Missing build digest output"
+            exit 1
+          fi
+
+          IMAGE_DIGEST_REF="${IMAGE_REPO}@${DIGEST}"
+          echo "Signing ${IMAGE_DIGEST_REF}"
+
+          cosign sign --yes "${IMAGE_DIGEST_REF}"
+
+      - name: Enforce signature verification (keyless, by digest)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          DIGEST="${{ steps.build.outputs.digest }}"
+          if [ -z "${DIGEST}" ]
+          then
+            echo "Missing build digest output"
+            exit 1
+          fi
+
+          IMAGE_DIGEST_REF="${IMAGE_REPO}@${DIGEST}"
+          echo "Verifying ${IMAGE_DIGEST_REF}"
+
+          # Blocks the workflow if signature verification fails.
+          cosign verify \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity-regexp "https://github.com/IzharHaq1986/secure-fraud-detection-api/.+" \
+            "${IMAGE_DIGEST_REF}"
+
+      - name: Create GitHub Release (tag push only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.image_tag }}
+          files: |
+            sbom.spdx.json
