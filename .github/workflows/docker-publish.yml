@@ -151,27 +151,6 @@ jobs:
             --certificate-identity-regexp "https://github.com/IzharHaq1986/secure-fraud-detection-api/.+" \
             "${IMAGE_DIGEST_REF}"
 
-      - name: Create GitHub Release and upload SBOM (tag push only)
-        if: startsWith(github.ref, 'refs/tags/')
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-
-          TAG="${{ steps.tag.outputs.image_tag }}"
-
-          if [ -z "${TAG}" ]
-          then
-            echo "Release tag is empty"
-            exit 1
-          fi
-
-          if [ ! -f "sbom.spdx.json" ]
-          then
-            echo "SBOM file not found"
-            exit 1
-          fi
 
           # Create a standard (mutable) release if it does not already exist.
           if ! gh release view "${TAG}" >/dev/null 2>&1
