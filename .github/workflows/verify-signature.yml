@@ -1,0 +1,25 @@
+name: Verify Published Image Signature
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Verify signature (keyless)
+        run: |
+          set -euo pipefail
+
+          cosign verify \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity-regexp "https://github.com/IzharHaq1986/secure-fraud-detection-api/.+" \
+            ghcr.io/izharhaq1986/secure-fraud-detection-api:v1.0.7
