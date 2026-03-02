@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: "Image tag to publish (example: v1.0.8). If empty, uses the Git ref name."
+        description: "Image tag to publish (example: v1.0.11). If empty, the git ref name is used."
         required: false
         default: ""
 
@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   publish:
-    name: Build, push, sign, and enforce verification
+    name: Build, push, sign, verify, and release
     runs-on: ubuntu-latest
 
     env:
@@ -34,7 +34,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          # For workflow_dispatch, allow an explicit tag. Otherwise use the pushed git tag.
+          # If manually dispatched, allow explicit tag input.
+          # Otherwise use the git tag name from the push event.
           if [ -n "${{ inputs.image_tag }}" ]
           then
             IMAGE_TAG="${{ inputs.image_tag }}"
@@ -44,7 +45,7 @@ jobs:
 
           if [ -z "${IMAGE_TAG}" ]
           then
-            echo "IMAGE_TAG is empty"
+            echo "Image tag is empty"
             exit 1
           fi
 
@@ -77,7 +78,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # Uses GitHub Actions cache for faster rebuilds.
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -92,7 +92,7 @@ jobs:
           DIGEST="${{ steps.build.outputs.digest }}"
           if [ -z "${DIGEST}" ]
           then
-            echo "Missing build digest output"
+            echo "Missing image digest from build step"
             exit 1
           fi
 
@@ -101,7 +101,7 @@ jobs:
 
           syft "${IMAGE_DIGEST_REF}" -o spdx-json=sbom.spdx.json
 
-      - name: Upload SBOM artifact
+      - name: Upload SBOM as workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: sbom-spdx-json
@@ -121,7 +121,7 @@ jobs:
           DIGEST="${{ steps.build.outputs.digest }}"
           if [ -z "${DIGEST}" ]
           then
-            echo "Missing build digest output"
+            echo "Missing image digest from build step"
             exit 1
           fi
 
@@ -138,24 +138,48 @@ jobs:
           DIGEST="${{ steps.build.outputs.digest }}"
           if [ -z "${DIGEST}" ]
           then
-            echo "Missing build digest output"
+            echo "Missing image digest from build step"
             exit 1
           fi
 
           IMAGE_DIGEST_REF="${IMAGE_REPO}@${DIGEST}"
           echo "Verifying ${IMAGE_DIGEST_REF}"
 
-          # Blocks the workflow if signature verification fails.
+          # Workflow fails if verification does not succeed.
           cosign verify \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             --certificate-identity-regexp "https://github.com/IzharHaq1986/secure-fraud-detection-api/.+" \
             "${IMAGE_DIGEST_REF}"
 
-      - name: Create GitHub Release (tag push only)
+      - name: Create GitHub Release and upload SBOM (tag push only)
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          immutable: false
-          tag_name: ${{ steps.tag.outputs.image_tag }}
-          files: |
-            sbom.spdx.json
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          TAG="${{ steps.tag.outputs.image_tag }}"
+
+          if [ -z "${TAG}" ]
+          then
+            echo "Release tag is empty"
+            exit 1
+          fi
+
+          if [ ! -f "sbom.spdx.json" ]
+          then
+            echo "SBOM file not found"
+            exit 1
+          fi
+
+          # Create a standard (mutable) release if it does not already exist.
+          if ! gh release view "${TAG}" >/dev/null 2>&1
+          then
+            gh release create "${TAG}" \
+              --title "${TAG}" \
+              --notes "Automated release for ${TAG}"
+          fi
+
+          # Upload or overwrite the SBOM asset.
+          gh release upload "${TAG}" "sbom.spdx.json" --clobber
