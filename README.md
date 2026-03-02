@@ -69,3 +69,19 @@ Pull the immutable release image:
 
 ```bash
 docker pull ghcr.io/izharhaq1986/secure-fraud-detection-api:v1.0.5
+
+## Release SBOM (Supply Chain Transparency)
+
+Each Git tag release includes a generated SBOM (SPDX JSON format).
+
+Example (v1.0.6):
+
+- Release page: https://github.com/IzharHaq1986/secure-fraud-detection-api/releases/tag/v1.0.6
+- Attached asset: `sbom.spdx.json`
+
+The SBOM is generated directly from the published container image to ensure artifact-level traceability.
+
+This enables:
+- Dependency audit
+- Vulnerability triage
+- Reproducible security analysis
