@@ -1,131 +1,113 @@
-name: Release SBOM
+name: release-sbom
 
 on:
-  push:
-    tags:
-      - "v*"
+  # Generate and attach an SBOM whenever a GitHub Release is published.
+  release:
+    types: [published]
+
+  # Manual run support (useful for re-generating SBOM for a specific tag).
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to generate SBOM for (example: v1.0.23). Leave empty to use the release event tag."
+        required: false
+        default: ""
 
 permissions:
-  contents: write
-  packages: read
+  contents: write   # Required to upload release assets via gh
+  packages: read    # Required to pull images from GHCR
+  actions: read
 
 jobs:
-  release_sbom:
-    name: Attach SBOM to GitHub Release
+  sbom:
+    name: Generate and upload SBOM
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Resolve tag and image reference
+        id: refs
+        shell: bash
+        run: |
+          set -euo pipefail
 
-      - name: Log in to GHCR (for private manifest access)
+          # Resolve the release tag:
+          # - For release events: github.event.release.tag_name is authoritative
+          # - For manual dispatch: inputs.tag can be provided
+          TAG_FROM_RELEASE="${{ github.event.release.tag_name }}"
+          TAG_FROM_INPUT="${{ inputs.tag }}"
+
+          if [ -n "${TAG_FROM_INPUT}" ]; then
+            TAG="${TAG_FROM_INPUT}"
+          else
+            TAG="${TAG_FROM_RELEASE}"
+          fi
+
+          if [ -z "${TAG}" ]; then
+            echo "Tag could not be resolved. Provide inputs.tag or run from a release event."
+            exit 1
+          fi
+
+          # GHCR image reference for this repository.
+          # Example: ghcr.io/owner/repo:v1.0.23
+          IMAGE_REPO="ghcr.io/${{ github.repository }}"
+          IMAGE_REF="${IMAGE_REPO}:${TAG}"
+
+          echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
+          echo "image_ref=${IMAGE_REF}" >> "${GITHUB_OUTPUT}"
+
+          echo "Resolved tag: ${TAG}"
+          echo "Resolved image: ${IMAGE_REF}"
+
+      - name: Authenticate to GHCR
+        # Pulling the image to generate an SBOM can require authentication even for some public scenarios.
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install crane
-        uses: imjasonh/setup-crane@v0.3
+      - name: Generate SBOM (SPDX JSON)
+        # Syft-based SBOM generation for the container image reference.
+        # Output is stored as a deterministic file name for easy release attachment.
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ steps.refs.outputs.image_ref }}
+          format: spdx-json
+          output-file: sbom.spdx.json
 
-      - name: Create SBOM (SPDX JSON) from container image digest
-        shell: bash
-        env:
-          IMAGE_REPO: ghcr.io/izharhaq1986/secure-fraud-detection-api
-        run: |
-          set -euo pipefail
-
-          # Resolve tag name safely under strict mode.
-          TAG="${TAG:-${GITHUB_REF_NAME:-}}"
-          if [ -z "${TAG}" ]
-          then
-            echo "Tag is empty"
-            exit 1
-          fi
-
-          IMAGE_REF="${IMAGE_REPO}:${TAG}"
-          echo "Resolving digest for ${IMAGE_REF}"
-
-          # Workflows triggered by the same tag push run in parallel.
-          # The publish workflow may still be pushing the manifest when this job starts.
-          # Retry for a bounded period to avoid failing on transient 404/MANIFEST_UNKNOWN.
-          DIGEST=""
-          for attempt in $(seq 1 30)
-          do
-            if DIGEST="$(crane digest "${IMAGE_REF}" 2>/dev/null)"
-            then
-              break
-            fi
-
-            echo "Digest not available yet for ${IMAGE_REF} (attempt ${attempt}/30). Waiting 10s..."
-            sleep 10
-          done
-
-          if [ -z "${DIGEST}" ]
-          then
-            echo "Failed to resolve digest for ${IMAGE_REF} after retries"
-            exit 1
-          fi
-
-          IMAGE_DIGEST_REF="${IMAGE_REPO}@${DIGEST}"
-          echo "Generating SBOM for ${IMAGE_DIGEST_REF}"
-
-          # Install Syft and generate an SPDX JSON SBOM.
-          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
-            | sh -s -- -b /usr/local/bin
-
-          syft "${IMAGE_DIGEST_REF}" -o spdx-json=sbom.spdx.json
-
-      - name: Create GitHub Release if missing
-        shell: bash
+      - name: Upload SBOM to GitHub Release (skip if immutable)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-
-          # Resolve tag name safely under strict mode.
-          TAG="${TAG:-${GITHUB_REF_NAME:-}}"
-          if [ -z "${TAG}" ]
-          then
-            echo "Tag is empty"
-            exit 1
-          fi
-
-          # Create a standard (mutable) release if it does not exist yet.
-          if ! gh release view "${TAG}" >/dev/null 2>&1
-          then
-            gh release create "${TAG}" \
-              --title "${TAG}" \
-              --notes "Automated release for ${TAG}"
-          fi
-
-      - name: Upload SBOM to GitHub Release
+          TAG: ${{ steps.refs.outputs.tag }}
         shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
 
-          # Resolve tag name safely under strict mode.
-          TAG="${TAG:-${GITHUB_REF_NAME:-}}"
-          if [ -z "${TAG}" ]
-          then
-            echo "Tag is empty"
-            exit 1
+          SBOM_FILE="sbom.spdx.json"
+
+          if [ ! -f "${SBOM_FILE}" ]; then
+            echo "SBOM file not found (${SBOM_FILE}); skipping upload."
+            exit 0
           fi
 
-          if [ ! -f "sbom.spdx.json" ]
-          then
-            echo "SBOM file not found: sbom.spdx.json"
-            exit 1
+          echo "Attempting to upload SBOM asset to release: ${TAG}"
+          echo "Asset: ${SBOM_FILE}"
+
+          # Capture stderr so the workflow can detect the immutable release condition (HTTP 422)
+          # and skip without failing the job.
+          ERR_LOG="$(mktemp)"
+
+          if gh release upload "${TAG}" "${SBOM_FILE}" --clobber 2> "${ERR_LOG}"; then
+            echo "SBOM uploaded successfully."
+            exit 0
           fi
 
-          # Attempt to upload the SBOM asset.
-          # If the GitHub Release is immutable, GitHub returns HTTP 422 and rejects asset uploads.
-          # In that case, skip without failing the workflow (the publish/sign/verify pipeline remains valid).
-          if ! gh release upload "${TAG}" "sbom.spdx.json" --clobber
-          then
-            echo "SBOM upload skipped: GitHub Release is immutable (HTTP 422)."
-            echo "SBOM remains available as a workflow artifact for this run."
+          # GitHub returns HTTP 422 when uploads are blocked due to release immutability.
+          if grep -q "HTTP 422" "${ERR_LOG}" && grep -qi "immutable release" "${ERR_LOG}"; then
+            echo "Release is immutable (HTTP 422). SBOM upload is not allowed. Skipping without failing CI."
+            exit 0
           fi
+
+          echo "SBOM upload failed for a reason other than immutability:"
+          cat "${ERR_LOG}"
+          exit 1
