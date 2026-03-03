@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag to generate SBOM for (example: v1.0.24). Leave empty to use the release event tag."
+        description: "Release tag to generate SBOM for (example: v1.0.25). Leave empty to use the release event tag."
         required: false
         default: ""
 
@@ -48,7 +48,7 @@ jobs:
           fi
 
           # GHCR image reference for this repository.
-          # Example: ghcr.io/owner/repo:v1.0.24
+          # Example: ghcr.io/owner/repo:v1.0.25
           IMAGE_REPO="ghcr.io/${{ github.repository }}"
           IMAGE_REF="${IMAGE_REPO}:${TAG}"
 
@@ -79,6 +79,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.refs.outputs.tag }}
+          REPO: ${{ github.repository }}
         shell: bash
         run: |
           set -euo pipefail
@@ -91,24 +92,25 @@ jobs:
           fi
 
           echo "Attempting to upload SBOM asset to release: ${TAG}"
+          echo "Repository: ${REPO}"
           echo "Asset: ${SBOM_FILE}"
 
-          # Capture stderr so error text can be inspected deterministically.
-          ERR_LOG="$(mktemp)"
+          # Capture BOTH stdout and stderr because gh may print HTTP 422 to stdout.
+          UPLOAD_LOG="$(mktemp)"
 
-          if gh release upload "${TAG}" "${SBOM_FILE}" --clobber 2> "${ERR_LOG}"; then
+          if gh release upload "${TAG}" "${SBOM_FILE}" --clobber --repo "${REPO}" > "${UPLOAD_LOG}" 2>&1; then
             echo "SBOM uploaded successfully."
             exit 0
           fi
 
-          # Always print the captured error output to keep CI logs actionable.
-          echo "gh release upload failed. Raw error output:"
-          cat "${ERR_LOG}"
+          # Always print the captured output to keep CI logs actionable.
+          echo "gh release upload failed. Raw output:"
+          cat "${UPLOAD_LOG}"
 
           # GitHub returns HTTP 422 when uploads are blocked due to release immutability.
           # The exact wording varies, so match multiple known patterns while keeping scope tight.
-          if grep -q "HTTP 422" "${ERR_LOG}" && \
-             ( grep -qi "immutable" "${ERR_LOG}" || grep -qi "Cannot upload assets" "${ERR_LOG}" ); then
+          if grep -q "HTTP 422" "${UPLOAD_LOG}" && \
+             ( grep -qi "immutable" "${UPLOAD_LOG}" || grep -qi "Cannot upload assets" "${UPLOAD_LOG}" ); then
             echo "Detected immutable release upload rejection (HTTP 422). Skipping SBOM upload without failing CI."
             exit 0
           fi
