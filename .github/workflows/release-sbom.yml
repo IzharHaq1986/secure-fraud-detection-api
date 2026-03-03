@@ -121,5 +121,11 @@ jobs:
             exit 1
           fi
 
-          # Upload the SBOM asset. Overwrite if the asset already exists.
-          gh release upload "${TAG}" "sbom.spdx.json" --clobber
+          # Attempt to upload the SBOM asset.
+          # If the GitHub Release is immutable, GitHub returns HTTP 422 and rejects asset uploads.
+          # In that case, skip without failing the workflow (the publish/sign/verify pipeline remains valid).
+          if ! gh release upload "${TAG}" "sbom.spdx.json" --clobber
+          then
+            echo "SBOM upload skipped: GitHub Release is immutable (HTTP 422)."
+            echo "SBOM remains available as a workflow artifact for this run."
+          fi
