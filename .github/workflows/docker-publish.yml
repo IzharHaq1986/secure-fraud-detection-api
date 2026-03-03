@@ -1,56 +1,67 @@
-name: Publish container image to GHCR
+name: docker-publish
 
 on:
+  # Publish on version tags only (example: v1.0.26)
   push:
     tags:
       - "v*"
+
+  # Manual publish support (useful for re-runs / controlled releases)
   workflow_dispatch:
     inputs:
-      image_tag:
-        description: "Image tag to publish (example: v1.0.22). If empty, the git ref name is used."
+      tag:
+        description: "Tag to publish (example: v1.0.26). Leave empty to use the ref tag."
         required: false
         default: ""
 
 permissions:
-  contents: write
-  packages: write
-  id-token: write
+  contents: write     # Required for creating releases and uploading release assets via gh
+  packages: write     # Required for pushing images to GHCR
+  id-token: write     # Required for Cosign keyless signing (OIDC)
+
+concurrency:
+  # Prevent concurrent publishes for the same ref/tag
+  group: docker-publish-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   publish:
-    name: Build, push, sign, verify, and release
+    name: Publish container image to GHCR
     runs-on: ubuntu-latest
 
     env:
-      IMAGE_REPO: ghcr.io/izharhaq1986/secure-fraud-detection-api
+      IMAGE_REPO: ghcr.io/${{ github.repository }}
+      COSIGN_YES: "true"
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Determine image tag
+      - name: Resolve tag
         id: tag
         shell: bash
         run: |
           set -euo pipefail
 
-          # If manually dispatched, allow explicit tag input.
-          # Otherwise use the git tag name from the push event.
-          if [ -n "${{ inputs.image_tag }}" ]
-          then
-            IMAGE_TAG="${{ inputs.image_tag }}"
+          TAG_FROM_REF="${GITHUB_REF_NAME}"
+          TAG_FROM_INPUT="${{ inputs.tag }}"
+
+          if [ -n "${TAG_FROM_INPUT}" ]; then
+            TAG="${TAG_FROM_INPUT}"
           else
-            IMAGE_TAG="${{ github.ref_name }}"
+            TAG="${TAG_FROM_REF}"
           fi
 
-          if [ -z "${IMAGE_TAG}" ]
-          then
-            echo "Image tag is empty"
+          if [ -z "${TAG}" ]; then
+            echo "Tag could not be resolved. Provide workflow_dispatch input 'tag' or push a version tag."
             exit 1
           fi
 
-          echo "image_tag=${IMAGE_TAG}" >> "${GITHUB_OUTPUT}"
-          echo "Publishing ${IMAGE_REPO}:${IMAGE_TAG}"
+          echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
+          echo "Resolved tag: ${TAG}"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -62,124 +73,181 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.IMAGE_REPO }}
-          tags: |
-            type=raw,value=${{ steps.tag.outputs.image_tag }}
-
       - name: Build and push image
         id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+          tags: |
+            ${{ env.IMAGE_REPO }}:${{ steps.tag.outputs.tag }}
 
-      - name: Install Syft
-        uses: anchore/sbom-action/download-syft@v0.16.0
-
-      - name: Generate SBOM (SPDX JSON) for pushed digest
+      - name: Resolve image digest (registry-consistent, authenticated)
+        id: digest
         shell: bash
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
           set -euo pipefail
 
-          DIGEST="${{ steps.build.outputs.digest }}"
-          if [ -z "${DIGEST}" ]
-          then
-            echo "Missing image digest from build step"
-            exit 1
+          # The build step may return a digest; prefer it when available.
+          DIGEST_FROM_BUILD="${{ steps.build.outputs.digest }}"
+
+          if [ -n "${DIGEST_FROM_BUILD}" ]; then
+            DIGEST="${DIGEST_FROM_BUILD}"
+            echo "Using digest from build output: ${DIGEST}"
+          else
+            # Fall back to an authenticated registry lookup if the build action does not expose a digest.
+            # Registry propagation can be eventually consistent, so add bounded retries.
+            echo "Build digest not available from build output; resolving digest from GHCR with retries."
+
+            IMAGE_REF="${IMAGE_REPO}:${TAG}"
+            ATTEMPTS=12
+            SLEEP_SECONDS=5
+
+            DIGEST=""
+            for i in $(seq 1 "${ATTEMPTS}"); do
+              if DIGEST="$(crane digest "${IMAGE_REF}" 2>/dev/null)"; then
+                if [ -n "${DIGEST}" ]; then
+                  echo "Resolved digest on attempt ${i}: ${DIGEST}"
+                  break
+                fi
+              fi
+
+              echo "Digest not available yet (attempt ${i}/${ATTEMPTS}); sleeping ${SLEEP_SECONDS}s..."
+              sleep "${SLEEP_SECONDS}"
+            done
+
+            if [ -z "${DIGEST}" ]; then
+              echo "Failed to resolve digest for ${IMAGE_REF} after ${ATTEMPTS} attempts."
+              exit 1
+            fi
           fi
 
-          IMAGE_DIGEST_REF="${IMAGE_REPO}@${DIGEST}"
-          echo "Generating SBOM for ${IMAGE_DIGEST_REF}"
+          IMAGE_BY_DIGEST="${IMAGE_REPO}@${DIGEST}"
 
-          syft "${IMAGE_DIGEST_REF}" -o spdx-json=sbom.spdx.json
+          echo "digest=${DIGEST}" >> "${GITHUB_OUTPUT}"
+          echo "image_by_digest=${IMAGE_BY_DIGEST}" >> "${GITHUB_OUTPUT}"
 
-      - name: Upload SBOM as workflow artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: sbom-spdx-json
-          path: sbom.spdx.json
-          if-no-files-found: error
+          echo "Image by digest: ${IMAGE_BY_DIGEST}"
 
-      - name: Install cosign
+      - name: Install Cosign
         uses: sigstore/cosign-installer@v3
-        with:
-          cosign-release: "v2.2.4"
 
-      - name: Cosign sign (keyless, by digest)
+      - name: Sign image by digest (Cosign keyless OIDC)
         shell: bash
+        env:
+          IMAGE_BY_DIGEST: ${{ steps.digest.outputs.image_by_digest }}
         run: |
           set -euo pipefail
 
-          DIGEST="${{ steps.build.outputs.digest }}"
-          if [ -z "${DIGEST}" ]
-          then
-            echo "Missing image digest from build step"
-            exit 1
-          fi
+          echo "Signing image (digest-based): ${IMAGE_BY_DIGEST}"
+          cosign sign "${IMAGE_BY_DIGEST}"
 
-          IMAGE_DIGEST_REF="${IMAGE_REPO}@${DIGEST}"
-          echo "Signing ${IMAGE_DIGEST_REF}"
-
-          cosign sign --yes "${IMAGE_DIGEST_REF}"
-
-      - name: Enforce signature verification (keyless, by digest)
+      - name: Verify image signature (identity + transparency log)
         shell: bash
+        env:
+          IMAGE_BY_DIGEST: ${{ steps.digest.outputs.image_by_digest }}
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
           set -euo pipefail
 
-          DIGEST="${{ steps.build.outputs.digest }}"
-          if [ -z "${DIGEST}" ]
-          then
-            echo "Missing image digest from build step"
-            exit 1
-          fi
+          # Identity is pinned to this workflow path and tag ref.
+          # This enforces that only this repository and workflow can produce valid signatures.
+          CERT_IDENTITY="https://github.com/${GITHUB_REPOSITORY}/.github/workflows/docker-publish.yml@refs/tags/${TAG}"
+          ISSUER="https://token.actions.githubusercontent.com"
 
-          IMAGE_DIGEST_REF="${IMAGE_REPO}@${DIGEST}"
-          echo "Verifying ${IMAGE_DIGEST_REF}"
+          echo "Verifying signature for: ${IMAGE_BY_DIGEST}"
+          echo "Expected certificate identity: ${CERT_IDENTITY}"
+          echo "Expected OIDC issuer: ${ISSUER}"
 
-          # Workflow fails if verification does not succeed.
           cosign verify \
-            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-            --certificate-identity-regexp "https://github.com/IzharHaq1986/secure-fraud-detection-api/.+" \
-            "${IMAGE_DIGEST_REF}"
+            --certificate-identity "${CERT_IDENTITY}" \
+            --certificate-oidc-issuer "${ISSUER}" \
+            "${IMAGE_BY_DIGEST}" \
+            >/dev/null
 
-      - name: Create GitHub Release and upload SBOM (tag push only)
-        if: startsWith(github.ref, 'refs/tags/')
+          echo "Signature verification succeeded."
+
+      - name: Generate SBOM (SPDX JSON)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ steps.digest.outputs.image_by_digest }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+
+      - name: Ensure GitHub Release exists for tag
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
           set -euo pipefail
 
-          # Use the resolved workflow tag output, not an implicit shell variable.
-          TAG="${{ steps.tag.outputs.image_tag }}"
-          if [ -z "${TAG}" ]
-          then
-            echo "Tag is empty"
-            exit 1
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "Release already exists for tag: ${TAG}"
+            exit 0
           fi
 
-          if [ ! -f "sbom.spdx.json" ]
-          then
-            echo "SBOM file not found"
-            exit 1
+          # Create the release when absent so SBOM upload has a target.
+          # Notes are intentionally minimal; release assets and provenance carry the operational value.
+          echo "Release not found. Creating release for tag: ${TAG}"
+          gh release create "${TAG}" \
+            --title "${TAG}" \
+            --notes "Automated release for ${TAG}."
+
+      - name: Upload SBOM to GitHub Release (skip if immutable)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          # Upload SBOM to the GitHub Release.
+          # GitHub can reject uploads for immutable releases with HTTP 422.
+          # Capture both stdout and stderr because gh may emit the error to stdout.
+          SBOM_FILE="sbom.spdx.json"
+
+          if [ ! -f "${SBOM_FILE}" ]; then
+            echo "SBOM file not found (${SBOM_FILE}); skipping upload."
+            exit 0
           fi
 
-          # Create a standard (mutable) release if it does not already exist.
-          if ! gh release view "${TAG}" >/dev/null 2>&1
-          then
-            gh release create "${TAG}" \
-              --title "${TAG}" \
-              --notes "Automated release for ${TAG}"
+          echo "Attempting to upload SBOM asset to release: ${TAG}"
+          echo "Asset: ${SBOM_FILE}"
+
+          UPLOAD_LOG="$(mktemp)"
+
+          if gh release upload "${TAG}" "${SBOM_FILE}" --clobber --repo "${GITHUB_REPOSITORY}" > "${UPLOAD_LOG}" 2>&1; then
+            echo "SBOM uploaded successfully."
+            exit 0
           fi
 
-          # Upload or overwrite the SBOM asset.
-          gh release upload "${TAG}" "sbom.spdx.json" --clobber
+          echo "gh release upload failed. Raw output:"
+          cat "${UPLOAD_LOG}"
+
+          # Skip only the known immutable-release condition (HTTP 422).
+          # Wording can vary, so match multiple variants while keeping scope tight.
+          if grep -q "HTTP 422" "${UPLOAD_LOG}" && \
+             ( grep -qi "immutable" "${UPLOAD_LOG}" || grep -qi "Cannot upload assets" "${UPLOAD_LOG}" ); then
+            echo "Detected immutable release upload rejection (HTTP 422). Skipping SBOM upload without failing CI."
+            exit 0
+          fi
+
+          echo "SBOM upload failed for a reason other than immutable release protection."
+          exit 1
+
+      - name: Summary
+        shell: bash
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          IMAGE_BY_DIGEST: ${{ steps.digest.outputs.image_by_digest }}
+        run: |
+          set -euo pipefail
+
+          echo "Publish complete."
+          echo "Tag: ${TAG}"
+          echo "Image: ${IMAGE_BY_DIGEST}"
+          echo "SBOM: sbom.spdx.json"
