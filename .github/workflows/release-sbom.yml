@@ -22,22 +22,21 @@ jobs:
       - name: Create SBOM (SPDX JSON) from container image digest
         shell: bash
         env:
-          TAG: ${{ github.ref_name }}
           IMAGE_REPO: ghcr.io/izharhaq1986/secure-fraud-detection-api
           # Uses the workflow token to authenticate GHCR manifest requests (required for private packages).
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
 
-          # The workflow is tag-triggered; use the tag name as the release identifier.
-          if [ -z "${TAG:-}" ]
+          # Resolve tag name safely under strict mode.
+          TAG="${TAG:-${GITHUB_REF_NAME:-}}"
+          if [ -z "${TAG}" ]
           then
             echo "Tag is empty"
             exit 1
           fi
 
           # Resolve the immutable image digest from the tag (OCI/Docker Registry HTTP API v2).
-          # This request is authenticated because GHCR may not expose digest headers for private images.
           REPO_PATH="${IMAGE_REPO#ghcr.io/}"
           MANIFEST_URL="https://ghcr.io/v2/${REPO_PATH}/manifests/${TAG}"
 
@@ -68,11 +67,12 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
 
-          if [ -z "${TAG:-}" ]
+          # Resolve tag name safely under strict mode.
+          TAG="${TAG:-${GITHUB_REF_NAME:-}}"
+          if [ -z "${TAG}" ]
           then
             echo "Tag is empty"
             exit 1
@@ -90,11 +90,12 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
 
-          if [ -z "${TAG:-}" ]
+          # Resolve tag name safely under strict mode.
+          TAG="${TAG:-${GITHUB_REF_NAME:-}}"
+          if [ -z "${TAG}" ]
           then
             echo "Tag is empty"
             exit 1
