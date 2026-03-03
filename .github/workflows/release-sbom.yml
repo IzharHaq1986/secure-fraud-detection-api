@@ -18,39 +18,57 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Generate SBOM (SPDX JSON)
+      - name: Create SBOM (SPDX JSON) from container image digest
         shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+          IMAGE_REPO: ghcr.io/izharhaq1986/secure-fraud-detection-api
         run: |
           set -euo pipefail
 
-          # Use the tag name as the release identifier.
-          TAG="${GITHUB_REF_NAME:-}"
-          if [ -z "${TAG}" ]
+          # The workflow is tag-triggered; use the tag name as the release identifier.
+          if [ -z "${TAG:-}" ]
           then
             echo "Tag is empty"
             exit 1
           fi
 
-          # The SBOM is generated from the repository source for this tag.
-          # This avoids any coupling to container publishing and remains deterministic.
-          echo "Generating SBOM for ${TAG}"
+          # Resolve the immutable image digest from the tag (OCI/Docker Registry HTTP API v2).
+          # For private images, registry auth may be required.
+          REPO_PATH="${IMAGE_REPO#ghcr.io/}"
+          MANIFEST_URL="https://ghcr.io/v2/${REPO_PATH}/manifests/${TAG}"
 
-          python -m pip install --upgrade pip
-          python -m pip install "cyclonedx-bom>=4.0.0"
+          DIGEST="$(curl -sSI \
+            -H "Accept: application/vnd.oci.image.manifest.v1+json" \
+            "${MANIFEST_URL}" \
+            | awk -F': ' 'tolower($1)=="docker-content-digest"{print $2}' \
+            | tr -d '\r')"
 
-          # Generate an SPDX JSON SBOM for the Python project dependencies.
-          # The output file name matches the release asset name used elsewhere.
-          cyclonedx-py -o sbom.spdx.json
+          if [ -z "${DIGEST}" ]
+          then
+            echo "Failed to resolve digest for ${IMAGE_REPO}:${TAG}"
+            echo "Tried: ${MANIFEST_URL}"
+            exit 1
+          fi
+
+          IMAGE_DIGEST_REF="${IMAGE_REPO}@${DIGEST}"
+          echo "Generating SBOM for ${IMAGE_DIGEST_REF}"
+
+          # Install Syft in a predictable way and generate an SPDX JSON SBOM.
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
+            | sh -s -- -b /usr/local/bin
+
+          syft "${IMAGE_DIGEST_REF}" -o spdx-json=sbom.spdx.json
 
       - name: Create GitHub Release if missing
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
 
-          TAG="${GITHUB_REF_NAME:-}"
-          if [ -z "${TAG}" ]
+          if [ -z "${TAG:-}" ]
           then
             echo "Tag is empty"
             exit 1
@@ -68,11 +86,11 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
 
-          TAG="${GITHUB_REF_NAME:-}"
-          if [ -z "${TAG}" ]
+          if [ -z "${TAG:-}" ]
           then
             echo "Tag is empty"
             exit 1
