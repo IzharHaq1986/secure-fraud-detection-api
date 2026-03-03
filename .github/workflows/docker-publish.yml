@@ -1,16 +1,16 @@
 name: docker-publish
 
 on:
-  # Publish on version tags only (example: v1.0.26)
+  # Publish on version tags only (example: v1.0.27)
   push:
     tags:
       - "v*"
 
-  # Manual publish support (useful for re-runs / controlled releases)
+  # Manual publish support (useful for controlled releases and re-runs)
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to publish (example: v1.0.26). Leave empty to use the ref tag."
+        description: "Tag to publish (example: v1.0.27). Leave empty to use the ref tag."
         required: false
         default: ""
 
@@ -30,7 +30,6 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      IMAGE_REPO: ghcr.io/${{ github.repository }}
       COSIGN_YES: "true"
 
     steps:
@@ -60,6 +59,20 @@ jobs:
           echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
           echo "Resolved tag: ${TAG}"
 
+      - name: Resolve GHCR image repository (lowercase)
+        id: image
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Docker/OCI registries require lowercase repository names.
+          # GITHUB_REPOSITORY can contain uppercase characters, so normalize it.
+          REPO_LOWER="$(echo "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
+          IMAGE_REPO="ghcr.io/${REPO_LOWER}"
+
+          echo "image_repo=${IMAGE_REPO}" >> "${GITHUB_OUTPUT}"
+          echo "Resolved image repo: ${IMAGE_REPO}"
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -81,17 +94,18 @@ jobs:
           push: true
           platforms: linux/amd64
           tags: |
-            ${{ env.IMAGE_REPO }}:${{ steps.tag.outputs.tag }}
+            ${{ steps.image.outputs.image_repo }}:${{ steps.tag.outputs.tag }}
 
       - name: Resolve image digest (registry-consistent, authenticated)
         id: digest
         shell: bash
         env:
           TAG: ${{ steps.tag.outputs.tag }}
+          IMAGE_REPO: ${{ steps.image.outputs.image_repo }}
         run: |
           set -euo pipefail
 
-          # The build step may return a digest; prefer it when available.
+          # Prefer the digest emitted by the build step when available.
           DIGEST_FROM_BUILD="${{ steps.build.outputs.digest }}"
 
           if [ -n "${DIGEST_FROM_BUILD}" ]; then
@@ -100,9 +114,11 @@ jobs:
           else
             # Fall back to an authenticated registry lookup if the build action does not expose a digest.
             # Registry propagation can be eventually consistent, so add bounded retries.
-            echo "Build digest not available from build output; resolving digest from GHCR with retries."
-
             IMAGE_REF="${IMAGE_REPO}:${TAG}"
+
+            echo "Build digest not available from build output; resolving digest from GHCR with retries."
+            echo "Target image ref: ${IMAGE_REF}"
+
             ATTEMPTS=12
             SLEEP_SECONDS=5
 
@@ -132,6 +148,22 @@ jobs:
 
           echo "Image by digest: ${IMAGE_BY_DIGEST}"
 
+      - name: Install Crane (for digest resolution fallback)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Crane is used only when the build action does not provide a digest.
+          # Install via go to avoid relying on distro package availability.
+          if command -v crane >/dev/null 2>&1; then
+            echo "Crane already installed."
+            exit 0
+          fi
+
+          echo "Installing crane..."
+          go install github.com/google/go-containerregistry/cmd/crane@latest
+          echo "${HOME}/go/bin" >> "${GITHUB_PATH}"
+
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3
 
@@ -154,7 +186,6 @@ jobs:
           set -euo pipefail
 
           # Identity is pinned to this workflow path and tag ref.
-          # This enforces that only this repository and workflow can produce valid signatures.
           CERT_IDENTITY="https://github.com/${GITHUB_REPOSITORY}/.github/workflows/docker-publish.yml@refs/tags/${TAG}"
           ISSUER="https://token.actions.githubusercontent.com"
 
@@ -190,8 +221,6 @@ jobs:
             exit 0
           fi
 
-          # Create the release when absent so SBOM upload has a target.
-          # Notes are intentionally minimal; release assets and provenance carry the operational value.
           echo "Release not found. Creating release for tag: ${TAG}"
           gh release create "${TAG}" \
             --title "${TAG}" \
