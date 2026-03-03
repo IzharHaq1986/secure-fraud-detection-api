@@ -44,15 +44,27 @@ jobs:
             exit 1
           fi
 
-          # Resolve the immutable digest using an authenticated registry client.
-          # This avoids relying on response headers that may not be present for private images.
           IMAGE_REF="${IMAGE_REPO}:${TAG}"
           echo "Resolving digest for ${IMAGE_REF}"
 
-          DIGEST="$(crane digest "${IMAGE_REF}")"
+          # Workflows triggered by the same tag push run in parallel.
+          # The publish workflow may still be pushing the manifest when this job starts.
+          # Retry for a bounded period to avoid failing on transient 404/MANIFEST_UNKNOWN.
+          DIGEST=""
+          for attempt in $(seq 1 30)
+          do
+            if DIGEST="$(crane digest "${IMAGE_REF}" 2>/dev/null)"
+            then
+              break
+            fi
+
+            echo "Digest not available yet for ${IMAGE_REF} (attempt ${attempt}/30). Waiting 10s..."
+            sleep 10
+          done
+
           if [ -z "${DIGEST}" ]
           then
-            echo "Failed to resolve digest for ${IMAGE_REF}"
+            echo "Failed to resolve digest for ${IMAGE_REF} after retries"
             exit 1
           fi
 
