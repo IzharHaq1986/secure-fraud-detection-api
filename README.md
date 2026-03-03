@@ -10,78 +10,155 @@
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu_22.04-purple)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
 
-# Secure Fraud Detection API (Fintech)
+# Secure Fraud Detection API
 
-Security-first fraud detection API for fintech startups. Demonstrates audit-grade logging, threat modeling, RBAC, TLS-secured deployment on Ubuntu, and compliance-aligned AI architecture.
+FastAPI-based fraud detection service packaged as a signed and verifiable container image.
 
-## What this repo proves
-- Secure API design for model inference
-- Audit-ready decision logging (trace IDs, model versioning)
-- Threat modeling and risk-driven mitigations
-- Ubuntu-based deployment with TLS and hardened defaults
+Python 3.11 · FastAPI · Docker (Distroless) · GHCR · Cosign (OIDC) · SPDX SBOM · MIT License.
+```
 
-## Docs
-- docs/scope.md
-- docs/architecture.md
-- docs/threat_model.md
-- docs/risk_matrix.md
+## What This Repository Demonstrates
 
-## Project Structure
+Secure API design for model inference
+Audit-ready decision logging with trace IDs and model versioning
+Threat modeling and risk-driven mitigation
+Hardened container deployment with TLS-ready defaults
+Signed container images with digest-based verification
+Immutable releases with attached SBOM
+This is structured as a client-facing sample. It is not a tutorial repo.
+```
 
-```text
+## I. Project Structure
+```
 secure-fraud-detection-api/
 ├── app/
 │   ├── __init__.py
-│   ├── main.py                 # FastAPI app factory + router registration
-│   ├── auth.py                 # API-key authentication dependency
-│   ├── schemas.py              # Pydantic request/response models
-│   ├── routes/
-│   │   └── predict.py          # /v1/predict endpoint (single source of truth)
-│   ├── middleware.py           # Security / rate limiting / request-id middleware
-│   ├── audit_logger.py         # Tamper-evident audit logging
-│   └── model_loader.py         # Model artifact loading & validation
+│   ├── main.py                # FastAPI app factory + router registration
+│   ├── auth.py                # API-key authentication dependency
+│   ├── schemas.py             # Pydantic request/response models
+│   ├── middleware.py          # Security / rate limiting / request-id
+│   ├── audit_logger.py        # Tamper-evident audit logging
+│   ├── model_loader.py        # Model artifact loading & validation
+│   └── routes/
+│       └── predict.py         # /v1/predict endpoint
 │
 ├── tests/
-│   ├── conftest.py             # Test bootstrap + deterministic env setup
-│   ├── test_predict.py         # API behavior tests
-│   └── test_routes_unique.py   # Prevent duplicate route registration
+│   ├── conftest.py
+│   ├── test_predict.py
+│   └── test_routes_unique.py
 │
 ├── scripts/
-│   └── check_requirements_lock.sh  # CI lock verification script
+│   └── check_requirements_lock.sh
 │
 ├── .github/
 │   ├── workflows/
-│   │   ├── ci.yml              # Main CI pipeline
-│   │   └── release-sbom.yml    # SBOM generation on version tags
-│   └── dependabot.yml          # Automated dependency updates
+│   │   ├── docker-smoke.yml
+│   │   ├── docker-smoke-readonly.yml
+│   │   ├── docker-perf-sanity.yml
+│   │   ├── docker-publish.yml
+│   │   ├── verify-signature.yml
+│   │   └── release-sbom.yml
+│   └── dependabot.yml
 │
-├── requirements.txt            # Direct dependencies (human-curated)
-├── requirements.lock.txt       # Fully pinned environment (CI reproducible)
+├── requirements.txt
+├── requirements.lock.txt
+├── Dockerfile
 └── README.md
 ```
 
-## Release process (tags + SBOM)
-This repository uses semantic version tags to create versioned releases and attach an SBOM.
+## II. Getting Started
+```
+Run Locally
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload
 
-## Container Image (GHCR)
+Open:
+http://localhost:8000/health
+Expected:
+{"status":"ok"}
+Run with Docker
+docker build -t fraud-api:local .
+docker run -p 8000:8000 fraud-api:local
+```
 
-Pull the immutable release image:
+## III. Container Image (GHCR)
+```
+Pull a tagged release:
+docker pull ghcr.io/izharhaq1986/secure-fraud-detection-api:v1.0.X
+Pull by digest for immutability:
+docker pull ghcr.io/izharhaq1986/secure-fraud-detection-api@sha256:<digest>
+```
 
-```bash
-docker pull ghcr.io/izharhaq1986/secure-fraud-detection-api:v1.0.5
+## IV. Release Process (Tags + SBOM)
+```
+This repository uses semantic version tags.
+Each Git tag:
+Publishes a container image to GHCR
+Signs the image using Cosign (OIDC)
+Verifies the signature in CI
+Generates an SPDX JSON SBOM
+Attaches the SBOM to the GitHub Release
+Immutable release behavior is handled safely.
+If asset uploads are rejected due to immutability, CI skips without failing.
+```
+## V. Supply Chain Verification
+```
+Resolve image digest:
+crane digest ghcr.io/izharhaq1986/secure-fraud-detection-api:vX.Y.Z
+Verify signature:
+cosign verify \
+  --certificate-identity "https://github.com/IzharHaq1986/secure-fraud-detection-api/.github/workflows/docker-publish.yml@refs/tags/vX.Y.Z" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  ghcr.io/izharhaq1986/secure-fraud-detection-api@sha256:<digest>
 
-## Release SBOM (Supply Chain Transparency)
+Inspect SBOM:
+syft ghcr.io/izharhaq1986/secure-fraud-detection-api:vX.Y.Z
+```
 
-Each Git tag release includes a generated SBOM (SPDX JSON format).
+## VI. Screenshots
+```
+Stored in the docs/ directory.
+Docker smoke test
+Read-only filesystem validation
+GHCR publish workflow
+Cosign verification output
+SBOM generation and release page
 
-Example (v1.0.6):
+Example reference:
 
-- Release page: https://github.com/IzharHaq1986/secure-fraud-detection-api/releases/tag/v1.0.6
-- Attached asset: `sbom.spdx.json`
+![Docker Smoke](docs/docker-smoke.png)
+```
+## VII. CI Enforcement
+```
+Required workflows:
+docker-smoke
+docker-smoke-readonly
+docker-perf-sanity
+docker-publish
+verify-signature
+release-sbom
+Branch protection enforces required status checks.
 
-The SBOM is generated directly from the published container image to ensure artifact-level traceability.
+## VIII. Skills Demonstrated
+Secure FastAPI architecture
+Hardened Docker builds (Distroless, non-root)
+Digest-based signing
+Cosign keyless OIDC flow
+SBOM generation (SPDX)
+Immutable release handling
+Deterministic CI pipelines
+OCI naming compliance
 
-This enables:
-- Dependency audit
-- Vulnerability triage
-- Reproducible security analysis
+## IX. License
+
+MIT License.
+See the LICENSE file for details.
+Project Status
+Build pipeline: stable
+Release flow: verified
+Signing: enforced
+SBOM: generated
+OCI compliance: validated
+```
