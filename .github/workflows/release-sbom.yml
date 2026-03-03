@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  packages: read
 
 jobs:
   release_sbom:
@@ -23,6 +24,8 @@ jobs:
         env:
           TAG: ${{ github.ref_name }}
           IMAGE_REPO: ghcr.io/izharhaq1986/secure-fraud-detection-api
+          # Uses the workflow token to authenticate GHCR manifest requests (required for private packages).
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
 
@@ -34,11 +37,12 @@ jobs:
           fi
 
           # Resolve the immutable image digest from the tag (OCI/Docker Registry HTTP API v2).
-          # For private images, registry auth may be required.
+          # This request is authenticated because GHCR may not expose digest headers for private images.
           REPO_PATH="${IMAGE_REPO#ghcr.io/}"
           MANIFEST_URL="https://ghcr.io/v2/${REPO_PATH}/manifests/${TAG}"
 
           DIGEST="$(curl -sSI \
+            -H "Authorization: Bearer ${GHCR_TOKEN}" \
             -H "Accept: application/vnd.oci.image.manifest.v1+json" \
             "${MANIFEST_URL}" \
             | awk -F': ' 'tolower($1)=="docker-content-digest"{print $2}' \
@@ -54,7 +58,7 @@ jobs:
           IMAGE_DIGEST_REF="${IMAGE_REPO}@${DIGEST}"
           echo "Generating SBOM for ${IMAGE_DIGEST_REF}"
 
-          # Install Syft in a predictable way and generate an SPDX JSON SBOM.
+          # Install Syft and generate an SPDX JSON SBOM.
           curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
             | sh -s -- -b /usr/local/bin
 
