@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: "Image tag to publish (example: v1.0.11). If empty, the git ref name is used."
+        description: "Image tag to publish (example: v1.0.22). If empty, the git ref name is used."
         required: false
         default: ""
 
@@ -151,6 +151,27 @@ jobs:
             --certificate-identity-regexp "https://github.com/IzharHaq1986/secure-fraud-detection-api/.+" \
             "${IMAGE_DIGEST_REF}"
 
+      - name: Create GitHub Release and upload SBOM (tag push only)
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # Use the resolved workflow tag output, not an implicit shell variable.
+          TAG="${{ steps.tag.outputs.image_tag }}"
+          if [ -z "${TAG}" ]
+          then
+            echo "Tag is empty"
+            exit 1
+          fi
+
+          if [ ! -f "sbom.spdx.json" ]
+          then
+            echo "SBOM file not found"
+            exit 1
+          fi
 
           # Create a standard (mutable) release if it does not already exist.
           if ! gh release view "${TAG}" >/dev/null 2>&1
