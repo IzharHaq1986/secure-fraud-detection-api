@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag to generate SBOM for (example: v1.0.23). Leave empty to use the release event tag."
+        description: "Release tag to generate SBOM for (example: v1.0.24). Leave empty to use the release event tag."
         required: false
         default: ""
 
@@ -48,7 +48,7 @@ jobs:
           fi
 
           # GHCR image reference for this repository.
-          # Example: ghcr.io/owner/repo:v1.0.23
+          # Example: ghcr.io/owner/repo:v1.0.24
           IMAGE_REPO="ghcr.io/${{ github.repository }}"
           IMAGE_REF="${IMAGE_REPO}:${TAG}"
 
@@ -93,8 +93,7 @@ jobs:
           echo "Attempting to upload SBOM asset to release: ${TAG}"
           echo "Asset: ${SBOM_FILE}"
 
-          # Capture stderr so the workflow can detect the immutable release condition (HTTP 422)
-          # and skip without failing the job.
+          # Capture stderr so error text can be inspected deterministically.
           ERR_LOG="$(mktemp)"
 
           if gh release upload "${TAG}" "${SBOM_FILE}" --clobber 2> "${ERR_LOG}"; then
@@ -102,12 +101,18 @@ jobs:
             exit 0
           fi
 
+          # Always print the captured error output to keep CI logs actionable.
+          echo "gh release upload failed. Raw error output:"
+          cat "${ERR_LOG}"
+
           # GitHub returns HTTP 422 when uploads are blocked due to release immutability.
-          if grep -q "HTTP 422" "${ERR_LOG}" && grep -qi "immutable release" "${ERR_LOG}"; then
-            echo "Release is immutable (HTTP 422). SBOM upload is not allowed. Skipping without failing CI."
+          # The exact wording varies, so match multiple known patterns while keeping scope tight.
+          if grep -q "HTTP 422" "${ERR_LOG}" && \
+             ( grep -qi "immutable" "${ERR_LOG}" || grep -qi "Cannot upload assets" "${ERR_LOG}" ); then
+            echo "Detected immutable release upload rejection (HTTP 422). Skipping SBOM upload without failing CI."
             exit 0
           fi
 
-          echo "SBOM upload failed for a reason other than immutability:"
-          cat "${ERR_LOG}"
+          # Fail closed for all other errors.
+          echo "SBOM upload failed for a reason other than immutable release protection."
           exit 1
