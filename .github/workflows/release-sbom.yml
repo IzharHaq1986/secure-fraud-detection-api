@@ -19,12 +19,20 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Log in to GHCR (for private manifest access)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install crane
+        uses: imjasonh/setup-crane@v0.3
+
       - name: Create SBOM (SPDX JSON) from container image digest
         shell: bash
         env:
           IMAGE_REPO: ghcr.io/izharhaq1986/secure-fraud-detection-api
-          # Uses the workflow token to authenticate GHCR manifest requests (required for private packages).
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
 
@@ -36,21 +44,15 @@ jobs:
             exit 1
           fi
 
-          # Resolve the immutable image digest from the tag (OCI/Docker Registry HTTP API v2).
-          REPO_PATH="${IMAGE_REPO#ghcr.io/}"
-          MANIFEST_URL="https://ghcr.io/v2/${REPO_PATH}/manifests/${TAG}"
+          # Resolve the immutable digest using an authenticated registry client.
+          # This avoids relying on response headers that may not be present for private images.
+          IMAGE_REF="${IMAGE_REPO}:${TAG}"
+          echo "Resolving digest for ${IMAGE_REF}"
 
-          DIGEST="$(curl -sSI \
-            -H "Authorization: Bearer ${GHCR_TOKEN}" \
-            -H "Accept: application/vnd.oci.image.manifest.v1+json" \
-            "${MANIFEST_URL}" \
-            | awk -F': ' 'tolower($1)=="docker-content-digest"{print $2}' \
-            | tr -d '\r')"
-
+          DIGEST="$(crane digest "${IMAGE_REF}")"
           if [ -z "${DIGEST}" ]
           then
-            echo "Failed to resolve digest for ${IMAGE_REPO}:${TAG}"
-            echo "Tried: ${MANIFEST_URL}"
+            echo "Failed to resolve digest for ${IMAGE_REF}"
             exit 1
           fi
 
