@@ -49,7 +49,10 @@ jobs:
 
           # GHCR image reference for this repository.
           # Example: ghcr.io/owner/repo:v1.0.25
-          IMAGE_REPO="ghcr.io/${{ github.repository }}"
+         # Normalize repository name to lowercase for OCI compatibility
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+
+          IMAGE_REPO="ghcr.io/${REPO_LOWER}"
           IMAGE_REF="${IMAGE_REPO}:${TAG}"
 
           echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
