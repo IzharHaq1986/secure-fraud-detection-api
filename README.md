@@ -7,7 +7,7 @@
 ![Ruff](https://img.shields.io/badge/Linter-Ruff-000000)
 ![pytest](https://img.shields.io/badge/Tests-pytest-blueviolet)
 ![Coverage](https://img.shields.io/badge/Coverage-85%25+-brightgreen)
-![Platform](https://img.shields.io/badge/Platform-Ubuntu_22.04-purple)
+![Platform](https://img.shields.io/badge/Platform-Ubuntu_24.02-purple)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
 
 # Secure Fraud Detection API
@@ -140,8 +140,9 @@ docker-publish
 verify-signature
 release-sbom
 Branch protection enforces required status checks.
-
+```
 ## VIII. Skills Demonstrated
+```
 Secure FastAPI architecture
 Hardened Docker builds (Distroless, non-root)
 Digest-based signing
@@ -150,9 +151,9 @@ SBOM generation (SPDX)
 Immutable release handling
 Deterministic CI pipelines
 OCI naming compliance
-
+```
 ## IX. License
-
+```
 MIT License.
 See the LICENSE file for details.
 Project Status
