@@ -167,7 +167,7 @@ Software Bill of Materials generated using **Syft** and stored as a CI workflow 
 
 ![SBOM Artifact](docs/screenshots/sbom-artifact_V1.0.png)
 ```
-```
+
 ## VII. CI Enforcement
 ```
 Required workflows:
