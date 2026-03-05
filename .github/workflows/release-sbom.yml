@@ -1,38 +1,55 @@
 name: release-sbom
 
 on:
-  # Generate and attach an SBOM whenever a GitHub Release is published.
+  # Run automatically when a GitHub Release is published.
   release:
-    types: [published]
+    types:
+      - published
 
-  # Manual run support (useful for re-generating SBOM for a specific tag).
+  # Allow manual runs (useful for backfills or validation).
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag to generate SBOM for (example: v1.0.25). Leave empty to use the release event tag."
-        required: false
-        default: ""
+        description: "Release tag to generate SBOM for (example: v1.0.30)"
+        required: true
+        type: string
 
 permissions:
-  contents: write   # Required to upload release assets via gh
-  packages: read    # Required to pull images from GHCR
+  # Required to upload workflow artifacts and (when enabled) interact with releases.
+  contents: write
+
+  # Required to pull container images from GHCR using GITHUB_TOKEN.
+  packages: read
+
+  # Read access to Actions metadata.
   actions: read
+
+concurrency:
+  # Prevent overlapping SBOM generations for the same ref.
+  group: release-sbom-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   sbom:
     name: Generate and upload SBOM
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
+      # Notes:
+      # - checkout is not required for image SBOM generation, but it is kept to
+      #   allow future enhancements (e.g., embedding repo metadata in SBOM notes).
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Resolve tag and image reference
-        id: refs
+        id: meta
         shell: bash
         run: |
           set -euo pipefail
 
           # Resolve the release tag:
           # - For release events: github.event.release.tag_name is authoritative
-          # - For manual dispatch: inputs.tag can be provided
+          # - For manual dispatch: inputs.tag is required
           TAG_FROM_RELEASE="${{ github.event.release.tag_name }}"
           TAG_FROM_INPUT="${{ inputs.tag }}"
 
@@ -47,10 +64,9 @@ jobs:
             exit 1
           fi
 
-          # GHCR image reference for this repository.
-          # Example: ghcr.io/owner/repo:v1.0.25
-         # Normalize repository name to lowercase for OCI compatibility
-          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          # GHCR image reference must be lowercase to satisfy OCI parsing rules.
+          # github.repository is "Owner/Repo" and may include uppercase in the owner.
+          REPO_LOWER="$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')"
 
           IMAGE_REPO="ghcr.io/${REPO_LOWER}"
           IMAGE_REF="${IMAGE_REPO}:${TAG}"
@@ -62,7 +78,6 @@ jobs:
           echo "Resolved image: ${IMAGE_REF}"
 
       - name: Authenticate to GHCR
-        # Pulling the image to generate an SBOM can require authentication even for some public scenarios.
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -70,54 +85,20 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate SBOM (SPDX JSON)
-        # Syft-based SBOM generation for the container image reference.
-        # Output is stored as a deterministic file name for easy release attachment.
         uses: anchore/sbom-action@v0
         with:
-          image: ${{ steps.refs.outputs.image_ref }}
+          # Generate SBOM directly from the published GHCR image tag.
+          image: ${{ steps.meta.outputs.image_ref }}
+
+          # Output format.
           format: spdx-json
+
+          # Consistent SBOM filename for workflow artifacts.
           output-file: sbom.spdx.json
 
-      - name: Upload SBOM to GitHub Release (skip if immutable)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.refs.outputs.tag }}
-          REPO: ${{ github.repository }}
-        shell: bash
-        run: |
-          set -euo pipefail
+          # Keep workflow artifacts enabled so SBOMs are still published in CI output.
+          upload-artifact: true
 
-          SBOM_FILE="sbom.spdx.json"
-
-          if [ ! -f "${SBOM_FILE}" ]; then
-            echo "SBOM file not found (${SBOM_FILE}); skipping upload."
-            exit 0
-          fi
-
-          echo "Attempting to upload SBOM asset to release: ${TAG}"
-          echo "Repository: ${REPO}"
-          echo "Asset: ${SBOM_FILE}"
-
-          # Capture BOTH stdout and stderr because gh may print HTTP 422 to stdout.
-          UPLOAD_LOG="$(mktemp)"
-
-          if gh release upload "${TAG}" "${SBOM_FILE}" --clobber --repo "${REPO}" > "${UPLOAD_LOG}" 2>&1; then
-            echo "SBOM uploaded successfully."
-            exit 0
-          fi
-
-          # Always print the captured output to keep CI logs actionable.
-          echo "gh release upload failed. Raw output:"
-          cat "${UPLOAD_LOG}"
-
-          # GitHub returns HTTP 422 when uploads are blocked due to release immutability.
-          # The exact wording varies, so match multiple known patterns while keeping scope tight.
-          if grep -q "HTTP 422" "${UPLOAD_LOG}" && \
-             ( grep -qi "immutable" "${UPLOAD_LOG}" || grep -qi "Cannot upload assets" "${UPLOAD_LOG}" ); then
-            echo "Detected immutable release upload rejection (HTTP 422). Skipping SBOM upload without failing CI."
-            exit 0
-          fi
-
-          # Fail closed for all other errors.
-          echo "SBOM upload failed for a reason other than immutable release protection."
-          exit 1
+          # Releases are immutable in this repository, so attaching assets will always fail.
+          # Upload SBOM to the workflow run artifacts instead of GitHub Release assets.
+          upload-release-assets: false
