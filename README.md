@@ -1,4 +1,4 @@
-![CI](https://github.com/IzharHaq1986/secure-fraud-detection-api/actions/workflows/ci.yml/badge.svg)
+\![CI](https://github.com/IzharHaq1986/secure-fraud-detection-api/actions/workflows/ci.yml/badge.svg)
 
 <!-- Tech Stack Badges -->
 ![Python](https://img.shields.io/badge/Python-3.12-blue)
@@ -128,7 +128,7 @@ SBOM generation and release page
 
 Example reference:
 The following screenshots demonstrate the secure container supply-chain workflow implemented in this project.
-
+```
 ### Docker Smoke Test
 
 Container starts successfully and exposes the `/health` endpoint.
