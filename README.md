@@ -118,16 +118,6 @@ syft ghcr.io/izharhaq1986/secure-fraud-detection-api:vX.Y.Z
 ```
 ## VI. Screenshots
 
-```
-Stored in the docs/ directory.
-
-Docker smoke test
-Read-only filesystem validation
-GHCR publish workflow
-Cosign verification output
-SBOM generation and release page
-```
-
 The following screenshots demonstrate the secure container supply-chain workflow implemented in this project.
 
 ### Docker Smoke Test
@@ -164,32 +154,29 @@ Software Bill of Materials generated using **Syft** and stored as a CI workflow 
 
 ## VII. CI Enforcement
 
-```
 Required workflows:
-docker-smoke
-docker-smoke-readonly
-docker-perf-sanity
-docker-publish
-verify-signature
-release-sbom
+
+- docker-smoke
+- docker-smoke-readonly
+- docker-perf-sanity
+- docker-publish
+- verify-signature
+- release-sbom
 
 Branch protection enforces required status checks.
-```
 
 ---
 
 ## VIII. Skills Demonstrated
 
-```
-Secure FastAPI architecture
-Hardened Docker builds (Distroless, non-root)
-Digest-based signing
-Cosign keyless OIDC flow
-SBOM generation (SPDX)
-Immutable release handling
-Deterministic CI pipelines
-OCI naming compliance
-```
+- Secure FastAPI architecture
+- Hardened Docker builds (Distroless, non-root)
+- Digest-based signing
+- Cosign keyless OIDC flow
+- SBOM generation (SPDX)
+- Immutable release handling
+- Deterministic CI pipelines
+- OCI naming compliance
 
 ---
 
@@ -199,10 +186,10 @@ MIT License.
 
 See the `LICENSE` file for details.
 
-Project Status
+Project Status:
 
-- Build pipeline: stable  
-- Release flow: verified  
-- Signing: enforced  
-- SBOM: generated  
+- Build pipeline: stable
+- Release flow: verified
+- Signing: enforced
+- SBOM: generated
 - OCI compliance: validated
