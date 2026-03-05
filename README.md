@@ -135,15 +135,11 @@ Container starts successfully and exposes the `/health` endpoint.
 
 ![Docker Smoke Test](docs/screenshots/docker-smoke_V1.0.png)
 
----
-
 ### Read-Only Container Execution
 
 The container runs with a read-only filesystem, demonstrating runtime hardening.
 
 ![Read-Only Container](docs/screenshots/readonly-container_V1.0.png)
-
----
 
 ### GHCR Publish Workflow
 
@@ -151,15 +147,11 @@ Container image successfully published to GitHub Container Registry.
 
 ![GHCR Publish](docs/screenshots/ghcr-publish_V1.0.png)
 
----
-
 ### Cosign Signature Verification
 
 Image signature verified using Cosign and GitHub OIDC identity.
 
 ![Cosign Verification](docs/screenshots/cosign-verify_V1.0.png)
-
----
 
 ### SBOM Generation
 
@@ -167,9 +159,8 @@ Software Bill of Materials generated using **Syft** and stored as a CI workflow 
 
 ![SBOM Artifact](docs/screenshots/sbom-artifact_V1.0.png)
 
+### VII. CI Enforcement
 ```
-## VII. CI Enforcement
-
 Required workflows:
 docker-smoke
 docker-smoke-readonly
@@ -178,10 +169,10 @@ docker-publish
 verify-signature
 release-sbom
 Branch protection enforces required status checks.
-
+```
 
 ### VIII. Skills Demonstrated
-
+```
 Secure FastAPI architecture
 Hardened Docker builds (Distroless, non-root)
 Digest-based signing
@@ -190,9 +181,9 @@ SBOM generation (SPDX)
 Immutable release handling
 Deterministic CI pipelines
 OCI naming compliance
-
+```
 ### IX. License
-
+```
 MIT License.
 See the LICENSE file for details.
 Project Status
