@@ -116,19 +116,20 @@ cosign verify \
 Inspect SBOM:
 syft ghcr.io/izharhaq1986/secure-fraud-detection-api:vX.Y.Z
 ```
-
 ## VI. Screenshots
+
 ```
 Stored in the docs/ directory.
+
 Docker smoke test
 Read-only filesystem validation
 GHCR publish workflow
 Cosign verification output
 SBOM generation and release page
-
-Example reference:
-The following screenshots demonstrate the secure container supply-chain workflow implemented in this project.
 ```
+
+The following screenshots demonstrate the secure container supply-chain workflow implemented in this project.
+
 ### Docker Smoke Test
 
 Container starts successfully and exposes the `/health` endpoint.
@@ -158,8 +159,12 @@ Image signature verified using Cosign and GitHub OIDC identity.
 Software Bill of Materials generated using **Syft** and stored as a CI workflow artifact.
 
 ![SBOM Artifact](docs/screenshots/sbom-artifact_V1.0.png)
-```
+
+---
+
 ## VII. CI Enforcement
+
+```
 Required workflows:
 docker-smoke
 docker-smoke-readonly
@@ -167,10 +172,15 @@ docker-perf-sanity
 docker-publish
 verify-signature
 release-sbom
+
 Branch protection enforces required status checks.
+```
 
+---
 
-### VIII. Skills Demonstrated
+## VIII. Skills Demonstrated
+
+```
 Secure FastAPI architecture
 Hardened Docker builds (Distroless, non-root)
 Digest-based signing
@@ -179,14 +189,20 @@ SBOM generation (SPDX)
 Immutable release handling
 Deterministic CI pipelines
 OCI naming compliance
-
-### IX. License
-MIT License.
-See the LICENSE file for details.
-Project Status
-Build pipeline: stable
-Release flow: verified
-Signing: enforced
-SBOM: generated
-OCI compliance: validated
 ```
+
+---
+
+## IX. License
+
+MIT License.
+
+See the `LICENSE` file for details.
+
+Project Status
+
+- Build pipeline: stable  
+- Release flow: verified  
+- Signing: enforced  
+- SBOM: generated  
+- OCI compliance: validated
