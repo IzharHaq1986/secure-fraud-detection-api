@@ -158,9 +158,8 @@ Image signature verified using Cosign and GitHub OIDC identity.
 Software Bill of Materials generated using **Syft** and stored as a CI workflow artifact.
 
 ![SBOM Artifact](docs/screenshots/sbom-artifact_V1.0.png)
-
-### VII. CI Enforcement
 ```
+## VII. CI Enforcement
 Required workflows:
 docker-smoke
 docker-smoke-readonly
@@ -169,10 +168,9 @@ docker-publish
 verify-signature
 release-sbom
 Branch protection enforces required status checks.
-```
+
 
 ### VIII. Skills Demonstrated
-```
 Secure FastAPI architecture
 Hardened Docker builds (Distroless, non-root)
 Digest-based signing
@@ -181,9 +179,8 @@ SBOM generation (SPDX)
 Immutable release handling
 Deterministic CI pipelines
 OCI naming compliance
-```
+
 ### IX. License
-```
 MIT License.
 See the LICENSE file for details.
 Project Status
