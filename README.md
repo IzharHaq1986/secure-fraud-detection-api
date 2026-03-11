@@ -89,7 +89,7 @@ The breakdown explains:
 The following diagram shows the container supply-chain pipeline implemented in this project.
 
 See: `docs/diagrams/container-supply-chain-architecture.md`
-```
+
 ## I. Project Structure
 ```
 secure-fraud-detection-api/
@@ -129,7 +129,7 @@ secure-fraud-detection-api/
 ```
 
 ## II. Getting Started
-```
+
 Run Locally
 python -m venv venv
 source venv/bin/activate
@@ -143,18 +143,18 @@ Expected:
 Run with Docker
 docker build -t fraud-api:local .
 docker run -p 8000:8000 fraud-api:local
-```
+
 
 ## III. Container Image (GHCR)
-```
+
 Pull a tagged release:
 docker pull ghcr.io/izharhaq1986/secure-fraud-detection-api:v1.0.X
 Pull by digest for immutability:
 docker pull ghcr.io/izharhaq1986/secure-fraud-detection-api@sha256:<digest>
-```
+
 
 ## IV. Release Process (Tags + SBOM)
-```
+
 This repository uses semantic version tags.
 Each Git tag:
 Publishes a container image to GHCR
@@ -247,9 +247,9 @@ Required workflows:
 
 Branch protection enforces required status checks.
 
----
+
 ## Documentation
-```
+
 The repository includes several documents explaining the system
 architecture and container supply-chain design.
 
@@ -265,7 +265,7 @@ docs/diagrams/container-supply-chain-architecture.md
 Technical Teardown Article 
 docs/articles/teardown-verifiable-container-supply-chain.md
 
-```
+
 ## VIII. Skills Demonstrated
 
 - Secure FastAPI architecture
