@@ -3,19 +3,42 @@
 
 ## I. System Context
 
-Purpose of the service and why container provenance matters
-in security-sensitive environments.
+The Secure Fraud Detection API demonstrates how an API service can be deployed
+with a verifiable container supply chain.
+
+The goal of the system is not only to run a containerized FastAPI service but
+also to ensure that the resulting container image can be independently verified.
+
+The design focuses on three engineering goals:
+
+• deterministic container builds 
+• verifiable artifact provenance 
+• transparent dependency visibility
+
+These goals are implemented through a CI pipeline that builds the container,
+signs the resulting image, and produces a Software Bill of Materials.
 
 ---
 
 ## II. High-Level Architecture
 
-Overview of the pipeline:
+The container pipeline implemented in this repository follows a linear
+verification model.
 
-Developer → CI → Container Build → Registry → Signing → Verification → SBOM
+Developer → CI Pipeline → Container Build → Registry → Image Signing → Artifact Verification
 
-Reference diagram:
-docs/diagrams/container-supply-chain-architecture.md
+The pipeline includes the following stages:
+
+1. Source code commit triggers a GitHub Actions workflow.
+2. The workflow builds a Distroless container image.
+3. The image is pushed to GitHub Container Registry.
+4. The image is signed using Cosign with GitHub OIDC identity.
+5. The pipeline verifies the signature in CI.
+6. A Software Bill of Materials is generated using Syft.
+
+The architecture diagram below illustrates the flow.
+
+See: `docs/diagrams/container-supply-chain-architecture.md`
 
 ---
 
