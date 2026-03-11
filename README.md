@@ -66,7 +66,12 @@ Signed container images with digest-based verification
 Immutable releases with attached SBOM
 This is structured as a client-facing sample. It is not a tutorial repo.
 ```
+## Architecture Diagram
+```
+The following diagram shows the container supply-chain pipeline implemented in this project.
 
+See: `docs/diagrams/container-supply-chain-architecture.md`
+```
 ## I. Project Structure
 ```
 secure-fraud-detection-api/
