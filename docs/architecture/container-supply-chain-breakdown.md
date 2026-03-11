@@ -44,10 +44,46 @@ See: `docs/diagrams/container-supply-chain-architecture.md`
 
 ## III. Application Layer
 
-FastAPI service structure
-Health endpoint
-Prediction endpoint
-Audit logging
+The application layer of the Secure Fraud Detection API is implemented using FastAPI.
+
+The service is intentionally minimal because the primary focus of the project
+is the container supply-chain pipeline rather than complex application logic.
+
+The API currently exposes a small set of endpoints:
+
+- `/health` — service health verification
+- `/v1/predict` — fraud prediction endpoint
+
+The application structure follows a modular layout.
+
+Key architectural components include:
+
+**Application Entry Point**
+
+The FastAPI application instance is created in `main.py`, where middleware and
+routers are registered.
+
+**Authentication Layer**
+
+API key authentication is implemented as a dependency, allowing protected
+endpoints without tightly coupling authentication logic to route handlers.
+
+**Security Middleware**
+
+Middleware components provide:
+
+- request identification
+- rate limiting
+- request validation
+
+**Audit Logging**
+
+Prediction decisions are recorded using tamper-evident logging. Each request
+includes trace identifiers and model metadata to support later inspection.
+
+This structure separates application logic from infrastructure concerns,
+which allows the container pipeline and security mechanisms to evolve
+independently of the API implementation.
 
 ---
 
