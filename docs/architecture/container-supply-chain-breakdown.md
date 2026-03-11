@@ -89,9 +89,52 @@ independently of the API implementation.
 
 ## IV. Container Runtime Design
 
-Distroless runtime
-Non-root execution
-Minimal attack surface
+The Secure Fraud Detection API runs inside a hardened container environment.
+
+The runtime container uses the following base image:
+
+gcr.io/distroless/python3-debian12:nonroot
+
+Distroless images intentionally remove components that are commonly present
+in standard container images. These images do not include:
+
+- shell utilities
+- package managers
+- unnecessary system libraries
+
+Reducing the number of installed components decreases the potential attack
+surface of the running container.
+
+### Non-Root Execution
+
+The container runs as a non-root user by default. Running services as root
+inside containers increases the risk of privilege escalation if a runtime
+vulnerability is exploited.
+
+Using the nonroot variant of the Distroless image ensures the service
+runs with minimal privileges.
+
+### Runtime Constraints
+
+The CI pipeline validates several runtime restrictions:
+
+- read-only filesystem
+- CPU limits
+- memory limits
+- PID limits
+
+These restrictions reduce the blast radius of potential runtime compromise.
+
+### Separation of Build and Runtime Stages
+
+The Dockerfile uses a multi-stage build process.
+
+The build stage installs dependencies and prepares the application
+environment. The runtime stage contains only the files required to
+execute the service.
+
+This separation helps ensure that development tools and temporary
+build artifacts do not appear in the final container image.
 
 ---
 
