@@ -445,3 +445,51 @@ logic.
 
 This makes the infrastructure design easier to understand,
 but the service does not represent a full production system.
+
+## X. Threat Model
+
+The architecture of the Secure Fraud Detection API was designed
+with several supply-chain security threats in mind.
+
+The goal is not to eliminate all risk but to reduce the likelihood
+of artifact compromise and improve transparency.
+
+### Artifact Substitution
+
+A malicious actor could replace a container image in the registry.
+
+Mitigation:
+
+Container images are signed using Cosign and verified using
+GitHub OIDC identity. This allows engineers to confirm the
+artifact was produced by the expected CI workflow.
+
+### Dependency Injection
+
+Unexpected dependencies could be introduced during the build
+process or through compromised packages.
+
+Mitigation:
+
+SBOM generation provides visibility into the container contents.
+Engineers can inspect dependencies using Syft.
+
+### CI Pipeline Tampering
+
+An attacker could attempt to modify the build pipeline to
+produce unauthorized artifacts.
+
+Mitigation:
+
+GitHub branch protection and required status checks ensure
+changes to the pipeline must pass CI verification.
+
+### Runtime Privilege Escalation
+
+Containers running with excessive privileges increase the
+impact of potential vulnerabilities.
+
+Mitigation:
+
+The runtime container uses a Distroless base image and
+runs as a non-root user with restricted filesystem access.
