@@ -11,13 +11,13 @@
 ![License](https://img.shields.io/badge/License-MIT-yellow)
 
 # Secure Fraud Detection API
-
+```
 FastAPI-based fraud detection service packaged as a signed and verifiable container image.
 
 Python 3.11 · FastAPI · Docker (Distroless) · GHCR · Cosign (OIDC) · SPDX SBOM · MIT License.
 ```
 ## Proof of Supply-Chain Security (Verify in 5 minutes)
-
+```
 This repository publishes a signed container image with verifiable provenance.
 
 The build pipeline uses GitHub Actions with OIDC-based keyless signing and
@@ -55,9 +55,9 @@ This repository demonstrates production-grade practices:
 • Verifiable container provenance  
 • Immutable container releases  
 • SBOM generation for dependency transparency
-
+```
 ## What This Repository Demonstrates
-
+```
 Secure API design for model inference
 Audit-ready decision logging with trace IDs and model versioning
 Threat modeling and risk-driven mitigation
@@ -228,7 +228,24 @@ Required workflows:
 Branch protection enforces required status checks.
 
 ---
+## Documentation
+```
+The repository includes several documents explaining the system
+architecture and container supply-chain design.
 
+Architecture Index 
+docs/architecture/index.md
+
+Architecture Breakdown 
+docs/architecture/container-supply-chain-breakdown.md
+
+Architecture Diagram 
+docs/diagrams/container-supply-chain-architecture.md
+
+Technical Teardown Article 
+docs/articles/teardown-verifiable-container-supply-chain.md
+
+```
 ## VIII. Skills Demonstrated
 
 - Secure FastAPI architecture
