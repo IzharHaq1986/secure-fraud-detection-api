@@ -275,8 +275,56 @@ external validation of the artifact.
 
 ## VII. Dependency Transparency
 
-SBOM generation with Syft
-Artifact publication in CI
+The Secure Fraud Detection API exposes container dependencies through
+Software Bill of Materials (SBOM) generation.
+
+An SBOM provides a structured list of all packages and components
+included in the container image.
+
+This allows engineers to inspect the software composition of the
+artifact and detect unexpected dependencies.
+
+### SBOM Generation
+
+The project uses Anchore Syft to generate the SBOM.
+
+Syft scans the container image and extracts dependency information
+from the filesystem layers.
+
+The resulting SBOM is produced in SPDX JSON format.
+
+### CI Integration
+
+SBOM generation occurs during the CI pipeline after the container
+image is built and signed.
+
+The SBOM generation process is implemented in the following workflow:
+
+release-sbom.yml
+
+The workflow runs Syft against the container image published in
+GitHub Container Registry.
+
+### Artifact Publication
+
+The generated SBOM is uploaded as a workflow artifact.
+
+This makes the dependency report accessible through the GitHub
+Actions run page.
+
+Engineers reviewing the build can download the SBOM artifact
+and inspect the container contents independently.
+
+### Local Inspection
+
+Engineers can also generate or inspect the SBOM locally.
+
+Example command:
+
+syft ghcr.io/izharhaq1986/secure-fraud-detection-api:vX.Y.Z
+
+This command produces a dependency report directly from the
+published container image.
 
 ---
 
