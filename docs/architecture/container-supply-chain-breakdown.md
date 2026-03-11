@@ -140,14 +140,69 @@ build artifacts do not appear in the final container image.
 
 ## V. CI/CD Pipeline Architecture
 
-GitHub Actions workflows
+The Secure Fraud Detection API uses GitHub Actions to implement a
+multi-stage CI/CD pipeline that builds, validates, signs, and documents
+the container artifact.
 
-docker-smoke 
-docker-smoke-readonly 
-docker-perf-sanity 
-docker-publish 
-verify-signature 
-release-sbom 
+The workflows are intentionally separated into small, focused stages.
+This makes it easier to reason about the pipeline and identify failures.
+
+### Pipeline Overview
+
+The CI/CD process includes the following stages:
+
+1. Source code commit triggers the CI pipeline.
+2. The container image is built from the Dockerfile.
+3. Runtime validation checks confirm container restrictions.
+4. The container image is pushed to GitHub Container Registry (GHCR).
+5. The image is signed using Cosign with GitHub OIDC identity.
+6. The pipeline verifies the signature.
+7. A Software Bill of Materials is generated.
+
+### Workflow Structure
+
+The repository contains several dedicated workflows:
+
+- docker-smoke.yml
+- docker-smoke-readonly.yml
+- docker-perf-sanity.yml
+- docker-publish.yml
+- verify-signature.yml
+- release-sbom.yml
+
+Each workflow focuses on a specific responsibility rather than combining
+all steps into a single pipeline.
+
+### Runtime Validation Workflows
+
+The docker-smoke workflow ensures the container starts correctly.
+
+The docker-smoke-readonly workflow verifies that the container
+can run with a read-only filesystem.
+
+These checks confirm that runtime restrictions do not break the service.
+
+### Container Publishing
+
+The docker-publish workflow builds the container image and pushes it
+to GitHub Container Registry.
+
+Publishing occurs only after the validation workflows succeed.
+
+### Signature Verification
+
+The verify-signature workflow confirms that the container image
+signature matches the expected repository identity.
+
+This ensures the published artifact was produced by the trusted CI pipeline.
+
+### SBOM Generation
+
+The release-sbom workflow generates a Software Bill of Materials
+using Anchore Syft.
+
+The SBOM is uploaded as a workflow artifact, making it accessible
+for engineers who want to inspect the container dependencies.
 
 ---
 
