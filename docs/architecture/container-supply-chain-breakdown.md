@@ -208,9 +208,68 @@ for engineers who want to inspect the container dependencies.
 
 ## VI. Supply Chain Security Model
 
-Cosign keyless signing
-OIDC identity verification
-Digest-based verification
+The Secure Fraud Detection API demonstrates a verifiable container
+supply-chain model.
+
+The primary goal is to ensure that the container artifact published
+in the registry can be independently verified by engineers.
+
+The design focuses on three security guarantees:
+
+- artifact authenticity
+- build provenance
+- dependency transparency
+
+### Artifact Signing
+
+Container images are signed using Cosign.
+
+The signing process occurs during the CI pipeline after the container
+image is successfully built and pushed to GitHub Container Registry.
+
+Instead of storing signing keys inside the repository, the pipeline
+uses keyless signing with GitHub OpenID Connect (OIDC).
+
+This allows the signing process to bind the image to the repository
+identity that produced it.
+
+### Identity Verification
+
+The Cosign verification process validates the certificate identity
+embedded in the image signature.
+
+The expected identity is the GitHub Actions workflow that produced
+the artifact.
+
+Engineers can confirm this identity using the verification command
+shown in the project documentation.
+
+This step ensures that the container image was produced by the
+trusted CI workflow rather than an external source.
+
+### Digest-Based Verification
+
+Container images can also be verified using their SHA256 digest.
+
+Digest verification guarantees that the pulled image matches the
+exact artifact produced by the CI pipeline.
+
+Combining signature verification with digest validation provides
+strong guarantees about artifact authenticity.
+
+### Independent Verification
+
+One of the primary goals of the architecture is to enable independent
+verification.
+
+Any engineer can:
+
+1. Pull the container image from GHCR
+2. Verify the Cosign signature
+3. Inspect the SBOM
+
+This removes the need to trust the CI system blindly and allows
+external validation of the artifact.
 
 ---
 
