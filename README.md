@@ -17,7 +17,7 @@ FastAPI-based fraud detection service packaged as a signed and verifiable contai
 Python 3.11 · FastAPI · Docker (Distroless) · GHCR · Cosign (OIDC) · SPDX SBOM · MIT License.
 ```
 ## Proof of Supply-Chain Security (Verify in 5 minutes)
-```
+
 This repository publishes a signed container image with verifiable provenance.
 
 The build pipeline uses GitHub Actions with OIDC-based keyless signing and
@@ -178,6 +178,26 @@ cosign verify \
 Inspect SBOM:
 syft ghcr.io/izharhaq1986/secure-fraud-detection-api:vX.Y.Z
 ```
+## Quick Verification Example
+```
+The following commands demonstrate how an engineer can verify the
+container artifact produced by this repository.
+
+Pull the container image:
+
+docker pull ghcr.io/izharhaq1986/secure-fraud-detection-api:vX.Y.Z
+
+Verify the container signature:
+
+cosign verify \
+  --certificate-identity "https://github.com/IzharHaq1986/secure-fraud-detection-api/.github/workflows/docker-publish.yml@refs/tags/vX.Y.Z" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  ghcr.io/izharhaq1986/secure-fraud-detection-api:vX.Y.Z
+
+Inspect the Software Bill of Materials:
+
+syft ghcr.io/izharhaq1986/secure-fraud-detection-api:vX.Y.Z
+
 ## VI. Screenshots
 
 The following screenshots demonstrate the secure container supply-chain workflow implemented in this project.
