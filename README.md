@@ -66,6 +66,24 @@ Signed container images with digest-based verification
 Immutable releases with attached SBOM
 This is structured as a client-facing sample. It is not a tutorial repo.
 ```
+## Architecture Breakdown
+```
+A detailed architecture explanation of the container supply-chain pipeline
+is available in the following document:
+
+docs/architecture/container-supply-chain-breakdown.md
+
+The breakdown explains:
+
+- system context and design goals
+- application architecture
+- container runtime design
+- CI/CD pipeline structure
+- supply-chain security model
+- artifact verification workflow
+- engineering tradeoffs
+```
+
 ## Architecture Diagram
 ```
 The following diagram shows the container supply-chain pipeline implemented in this project.
