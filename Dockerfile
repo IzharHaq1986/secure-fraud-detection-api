@@ -17,7 +17,7 @@
 # -----------------------------------------------------------------------------
 # Build stage: install Python dependencies into a portable directory (/install)
 # -----------------------------------------------------------------------------
-FROM python:3.11-slim-bookworm AS builder
+FROM python:3.14-slim-bookworm AS builder
 
 WORKDIR /app
 
